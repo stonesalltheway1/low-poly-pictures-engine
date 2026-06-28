@@ -229,6 +229,7 @@ bool FNI::FGetTemp(void)
     {
         // get the temp directory
         fs::path tmppath = fs::temp_directory_path();
+        tmppath = fs::canonical(tmppath);
         tmppath = tmppath / "";
 
         PCSZ sz = tmppath.c_str();
