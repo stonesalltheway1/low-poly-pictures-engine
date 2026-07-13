@@ -390,6 +390,7 @@ target_link_libraries(
 )
 
 # Video: video playback
+set(KAUAI_HAS_VIDEO ON PARENT_SCOPE)
 if (3DMM_GUI STREQUAL "Win32")
     add_library(KauaiVideo
         "${PROJECT_SOURCE_DIR}/kauai/src/videowin.cpp"
@@ -418,6 +419,7 @@ elseif(3DMM_GUI STREQUAL "SDL" AND GST_FOUND)
     )
 else()
     message(WARNING "Video playback not implemented on GUI platform: ${3DMM_GUI}")
+    set(KAUAI_HAS_VIDEO OFF PARENT_SCOPE)
 
     # Use stub implementation
     add_library(KauaiVideo

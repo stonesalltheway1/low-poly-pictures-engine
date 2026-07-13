@@ -253,6 +253,51 @@ set_property(
     "${PROJECT_SOURCE_DIR}/projects/mummy.3mm"
     "${PROJECT_SOURCE_DIR}/projects/surprise.3mm"
 )
+set_property(
+    TARGET studio
+    PROPERTY 3DMM_CONTENT
+    "${PROJECT_SOURCE_DIR}/content-files/3dmovie.ms"
+    "${PROJECT_SOURCE_DIR}/content-files/actor.3th"
+    "${PROJECT_SOURCE_DIR}/content-files/actresl.3th"
+    "${PROJECT_SOURCE_DIR}/content-files/bkgds.3th"
+    "${PROJECT_SOURCE_DIR}/content-files/mtrl.3th"
+    "${PROJECT_SOURCE_DIR}/content-files/bkgds.3cn"
+    "${PROJECT_SOURCE_DIR}/content-files/mtrls.3cn"
+    "${PROJECT_SOURCE_DIR}/content-files/prop.3th"
+    "${PROJECT_SOURCE_DIR}/content-files/snds.3cn"
+    "${PROJECT_SOURCE_DIR}/content-files/sound.3th"
+    "${PROJECT_SOURCE_DIR}/content-files/tbox.3th"
+    "${PROJECT_SOURCE_DIR}/content-files/tdfs.3cn"
+    "${PROJECT_SOURCE_DIR}/content-files/tmpls.3cn"
+)
+set_property(
+    TARGET studio
+    PROPERTY 3DMM_CUTSCENES
+    "${PROJECT_SOURCE_DIR}/content-files/04logn3.avi"
+    "${PROJECT_SOURCE_DIR}/content-files/05logn4.avi"
+    "${PROJECT_SOURCE_DIR}/content-files/backstag.avi"
+    "${PROJECT_SOURCE_DIR}/content-files/cntdwn5.avi"
+    "${PROJECT_SOURCE_DIR}/content-files/goida.avi"
+    "${PROJECT_SOURCE_DIR}/content-files/goprj.avi"
+    "${PROJECT_SOURCE_DIR}/content-files/gostu.avi"
+    "${PROJECT_SOURCE_DIR}/content-files/idea2.avi"
+    "${PROJECT_SOURCE_DIR}/content-files/idea3.avi"
+    "${PROJECT_SOURCE_DIR}/content-files/idea4.avi"
+    "${PROJECT_SOURCE_DIR}/content-files/logn1.avi"
+    "${PROJECT_SOURCE_DIR}/content-files/logn5.avi"
+    "${PROJECT_SOURCE_DIR}/content-files/logn06.avi"
+    "${PROJECT_SOURCE_DIR}/content-files/mhole2.avi"
+    "${PROJECT_SOURCE_DIR}/content-files/proj1.avi"
+    "${PROJECT_SOURCE_DIR}/content-files/proj2.avi"
+    "${PROJECT_SOURCE_DIR}/content-files/proj3.avi"
+    "${PROJECT_SOURCE_DIR}/content-files/proj4.avi"
+    "${PROJECT_SOURCE_DIR}/content-files/proj5.avi"
+    "${PROJECT_SOURCE_DIR}/content-files/proj6.avi"
+    "${PROJECT_SOURCE_DIR}/content-files/projt2.avi"
+    "${PROJECT_SOURCE_DIR}/content-files/ticket1.avi"
+    "${PROJECT_SOURCE_DIR}/content-files/ticket2.avi"
+    "${PROJECT_SOURCE_DIR}/content-files/tools1.avi"
+)
 
 # Please pay attention to the ending / in each DIRECTORY declaration. It
 # affects the destination!
@@ -288,8 +333,34 @@ install(FILES $<TARGET_PROPERTY:studio,3DMM_PROJECTS>
   DESTINATION "Microsoft Kids/Users/Melanie")
 install(FILES $<TARGET_PROPERTY:studio,3DMM_SAMPLES>
   DESTINATION "Microsoft Kids/Users/McZee")
-install(DIRECTORY "${PROJECT_SOURCE_DIR}/content-files/"
+install(FILES $<TARGET_PROPERTY:studio,3DMM_CONTENT>
   DESTINATION "Microsoft Kids/3D Movie Maker")
+
+if(KAUAI_HAS_VIDEO)
+    install(
+        FILES $<TARGET_PROPERTY:studio,3DMM_CUTSCENES>
+        DESTINATION "Microsoft Kids/3D Movie Maker"
+    )
+else()
+    # Generate placeholder files to avoid "I can't find this CD" errors
+    set(placeholder_avi "${CMAKE_CURRENT_BINARY_DIR}/placeholder.avi")
+    file(TOUCH "${placeholder_avi}")
+
+    get_property(cutscene_paths
+        TARGET studio
+        PROPERTY 3DMM_CUTSCENES
+    )
+
+    foreach(cutscene_path ${cutscene_paths})
+        cmake_path(GET cutscene_path FILENAME cutscene_name)
+        install(
+            FILES "${placeholder_avi}"
+            RENAME "${cutscene_name}"
+            DESTINATION "Microsoft Kids/3D Movie Maker"
+        )
+    endforeach()
+
+endif()
 
 if (WIN32 AND 3DMM_GUI STREQUAL "SDL")
     # Install SDL DLLs
