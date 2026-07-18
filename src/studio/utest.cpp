@@ -202,6 +202,7 @@ bool APP::_FInit(uint32_t grfapp, uint32_t grfgob, int32_t ginDef)
     uint32_t tsSplashScreen;
     FNI fniUserDoc;
     int32_t fFirstTimeUser;
+    int32_t dtsDelay;
 
     // Load startup preferences
     int32_t fStartupSound = kfStartupSoundDefault;
@@ -359,10 +360,11 @@ bool APP::_FInit(uint32_t grfapp, uint32_t grfgob, int32_t ginDef)
         goto LFail;
     }
 
-    if (fStartupSound)
+    dtsDelay = fStartupSound ? LwBound(kdtsHomeLogo - (TsCurrent() - tsHomeLogo), 0, kdtsHomeLogo) : 1;
+    if (!_FWaitSplashScreen(dtsDelay))
     {
-        while (TsCurrent() - tsHomeLogo < kdtsHomeLogo)
-            ; // spin until home logo has been up long enougH
+        _fDontReportInitFailure = fTrue;
+        goto LFail;
     }
 
     if (!_FShowSplashScreen())
@@ -411,11 +413,13 @@ bool APP::_FInit(uint32_t grfapp, uint32_t grfgob, int32_t ginDef)
         goto LFail;
     }
 
-    if (fStartupSound)
+    dtsDelay = fStartupSound ? LwBound(kdtsSplashScreen - (TsCurrent() - tsSplashScreen), 0, kdtsSplashScreen) : 1;
+    if (!_FWaitSplashScreen(dtsDelay))
     {
-        while (TsCurrent() - tsSplashScreen < kdtsSplashScreen)
-            ; // spin until splash screen has been up long enough
+        _fDontReportInitFailure = fTrue;
+        goto LFail;
     }
+
     Pkwa()->SetMbmp(pvNil); // bring down splash screen
 
     // If the user specified a doc on the command line, go straight
@@ -1734,6 +1738,38 @@ bool APP::_FReadStringTables(void)
         return fFalse;
 
     return fTrue;
+}
+
+/***************************************************************************
+    Run the main loop while the splash screen is showed for the given time
+***************************************************************************/
+bool APP::_FWaitSplashScreen(int32_t dtsSplash)
+{
+    AssertThis(0);
+
+    if (dtsSplash <= 0)
+        return fTrue;
+
+    int32_t tsSplashLim = TsCurrent() + dtsSplash;
+    while (!_fQuit && TsCurrent() < tsSplashLim)
+    {
+        TopOfLoop();
+
+        // internal commands have priority
+        if (vpcex->FDispatchNextCmd())
+            continue;
+
+        // handle system events
+        EVT evt;
+        if (_FGetNextEvt(&evt))
+            _DispatchEvt(&evt);
+    }
+
+    // Clear all events from the queue
+    FlushUserEvents(kgrfevtAll);
+
+    // Don't continue if the user quits the app
+    return !_fQuit;
 }
 
 /***************************************************************************
@@ -4718,9 +4754,9 @@ void APP::AssertValid(uint32_t grf)
     AssertPo(_pgstApp, 0);
     AssertPo(_pkwa, 0);
     AssertPo(_pgstApp, 0);
-    AssertPo(_pcrmAll, 0);
-    AssertPo(_pglicrfBuilding, 0);
-    AssertPo(_pglicrfStudio, 0);
+    AssertNilOrPo(_pcrmAll, 0);
+    AssertNilOrPo(_pglicrfBuilding, 0);
+    AssertNilOrPo(_pglicrfStudio, 0);
     AssertPo(_patblMain, 0);
     AssertPo(_patblGlobal, 0);
     AssertNilOrPo(_pcex, 0);

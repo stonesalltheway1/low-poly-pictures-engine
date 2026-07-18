@@ -219,6 +219,7 @@ class APP : public APP_PAR
     bool _FDisplayIs640480(void);
     bool _FSetRunInWindow(bool fRunInWindow);
     bool _FShowSplashScreen(void);
+    bool _FWaitSplashScreen(int32_t dtsSplash);
     bool _FPlaySplashSound(void);
     PMVIE _Pmvie(void);
     void _CleanupTemp(void);
