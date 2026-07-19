@@ -93,7 +93,12 @@ bool NTL::_FLoadFontTable()
             FNI fniFontFile;
             if (fniFontFile.FBuildFromPath(&stnFontFile))
             {
-                AssertDo(FAddFontFile(&fniFontFile), "Could not add font file");
+                if (!FAddFontFile(&fniFontFile))
+                {
+                    STN stnT;
+                    stnT.FFormatSz(PszLit("Could not load font: %s"), &stnFontFile);
+                    Warn(stnT.Psz());
+                }
             }
         }
     }

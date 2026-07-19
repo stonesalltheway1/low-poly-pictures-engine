@@ -150,6 +150,9 @@ bool NTL::FAddFontFile(PFNI pfniFontFile, PSTN pstnFontName, int32_t *ponn)
     int onn;
     PGL pglsdlfont = pvNil;
 
+    if (pfniFontFile->TExists() != tYes)
+        return fFalse;
+
     fRet = FGetTtfFontInfo(pfniFontFile, &stnFontName, &grfont);
     if (!fRet)
     {
