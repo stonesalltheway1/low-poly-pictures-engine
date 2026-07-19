@@ -23,11 +23,11 @@ static bool FFindSystemFont(PFNI pfniSystemFont)
     FcPattern *ppattern = pvNil, *pmatch = pvNil;
     FcResult result;
 
-    ppattern = FcNameParse((FcChar8 *)"sans");
+    ppattern = FcNameParse((FcChar8 *)"Helvetica,Arial,DejaVu Sans,Verdana,sans-serif");
     if (ppattern == pvNil)
         goto LFail;
 
-    FcConfigSubstitute(pvNil, ppattern, FcMatchPattern);
+    AssertDo(FcConfigSubstitute(pvNil, ppattern, FcMatchPattern), "FcConfigSubstitute returned false");
     FcDefaultSubstitute(ppattern);
 
     pmatch = FcFontMatch(pvNil, ppattern, &result);
@@ -40,6 +40,12 @@ static bool FFindSystemFont(PFNI pfniSystemFont)
             stnFontFile.SetUtf8Sz((PU8SZ)pu8szFontFile);
             fRet = pfniSystemFont->FBuildFromPath(&stnFontFile);
         }
+    }
+
+    if (fRet)
+    {
+        Assert(pfniSystemFont->TExists() == tYes, "Found system font file does not exist");
+        Assert(!pfniSystemFont->FDir(), "Found system font file is a directory?");
     }
 
 LFail:
