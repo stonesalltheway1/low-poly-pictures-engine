@@ -825,6 +825,13 @@ bool APP::_FEnsureDisplayResolution(void)
     bool fNoValue;
     int32_t tsResize;
 
+#ifdef __EMSCRIPTEN__
+    // In the browser the "display" is the page canvas: always run in a 640x480 window (canvas). Fullscreen is
+    // handled by the page (requires a user gesture), not by switching resolutions.
+    _fRunInWindow = fTrue;
+    return fTrue;
+#endif
+
     if (_FDisplayIs640480())
     {
         // System is already 640x480, so ignore registry and run fullscreen
@@ -4847,6 +4854,9 @@ bool KWA::FFindFile(PSTN pstnSrc, PFNI pfni)
     AssertPo(pstnSrc, 0);
     AssertPo(pfni, 0);
 
+#ifdef __EMSCRIPTEN__
+    fprintf(stderr, "[3dmm-web] KWA::FFindFile '%s'\n", pstnSrc->Psz());
+#endif
     return vptagm->FFindFile(vapp.SidProduct(), pstnSrc, pfni, FAskForCD());
 }
 

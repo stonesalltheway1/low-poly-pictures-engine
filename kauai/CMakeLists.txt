@@ -92,6 +92,11 @@ if(WIN32)
         PUBLIC
         winmm
     )
+elseif(EMSCRIPTEN)
+    target_sources(KauaiBase
+        PRIVATE
+        "${PROJECT_SOURCE_DIR}/kauai/src/platemscripten.cpp"
+    )
 elseif(UNIX AND NOT APPLE)
     target_sources(KauaiBase
         PRIVATE
@@ -752,7 +757,7 @@ target_link_libraries(
 )
 add_dependencies(tools chomp)
 
-if(3DMM_GUI STREQUAL "SDL")
+if(3DMM_GUI STREQUAL "SDL" AND NOT EMSCRIPTEN)
     add_custom_command(
         TARGET chomp
         POST_BUILD

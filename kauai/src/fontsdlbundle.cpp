@@ -74,6 +74,44 @@ bool NTL::_FLoadFontTable()
         goto LFail;
     }
 
+    // The original content asks for fonts by name (e.g. "Comic Sans MS"), and those can't be redistributed.
+    // If a requested font isn't bundled, register an open-licensed substitute's files under that name.
+    {
+        static const struct
+        {
+            PCSZ pszFont;
+            PCSZ pszSubstituteFilePrefix;
+        } rgsub[] = {
+            {PszLit("Comic Sans MS"), PszLit("ComicNeue-")}, // Comic Neue, SIL Open Font License
+        };
+
+        for (int32_t isub = 0; isub < (int32_t)CvFromRgv(rgsub); isub++)
+        {
+            STN stnFont = rgsub[isub].pszFont;
+            int32_t onnT;
+            if (FGetOnn(&stnFont, &onnT) && onnT != _onnSystem)
+                continue; // the real font is available
+
+            FTG ftgTtf = kftgTtf;
+            FNE fne;
+            FNI fniFont;
+            if (!fne.FInit(&fniFontDir, &ftgTtf, 1, 0))
+                continue;
+
+            STN stnPrefix = rgsub[isub].pszSubstituteFilePrefix;
+            while (fne.FNextFni(&fniFont))
+            {
+                STN stnLeaf;
+                fniFont.GetLeaf(&stnLeaf);
+                if (stnLeaf.Cch() >= stnPrefix.Cch() &&
+                    FEqualRgb(stnLeaf.Psz(), stnPrefix.Psz(), stnPrefix.Cch() * SIZEOF(achar)))
+                {
+                    FAddFontFile(&fniFont, &stnFont);
+                }
+            }
+        }
+    }
+
     fRet = fTrue;
 
 LFail:

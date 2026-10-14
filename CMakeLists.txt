@@ -8,6 +8,14 @@ set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:DebugDLL>")
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELWITHDEBINFO TRUE)
 
+if (EMSCRIPTEN)
+    # Optimized WebAssembly builds drew no actors (BRender output vanished) while -O0 builds worked: the 1995 code
+    # relies on type punning and wrapping integer overflow. Keep optimizations, but drop LTO and the unsafe
+    # assumptions. (Applies to BRender too, which is added later via FetchContent.)
+    set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELWITHDEBINFO FALSE)
+    add_compile_options(-fno-strict-aliasing -fwrapv)
+endif()
+
 if(MSVC)
   #set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /W4")
   
@@ -103,17 +111,27 @@ elseif("${3DMM_GUI}" STREQUAL "SDL")
         include(FetchSDL2)
     endif()
 
-    find_package(SDL2 CONFIG REQUIRED)
-    find_package(SDL2_ttf CONFIG REQUIRED)
+    if (EMSCRIPTEN)
+        # Emscripten ships SDL2 and SDL2_ttf as built-in ports
+        add_library(SDL2::SDL2 INTERFACE IMPORTED)
+        target_compile_options(SDL2::SDL2 INTERFACE "-sUSE_SDL=2")
+        target_link_options(SDL2::SDL2 INTERFACE "-sUSE_SDL=2")
+        add_library(SDL2_ttf::SDL2_ttf INTERFACE IMPORTED)
+        target_compile_options(SDL2_ttf::SDL2_ttf INTERFACE "-sUSE_SDL_TTF=2")
+        target_link_options(SDL2_ttf::SDL2_ttf INTERFACE "-sUSE_SDL_TTF=2")
+    else()
+        find_package(SDL2 CONFIG REQUIRED)
+        find_package(SDL2_ttf CONFIG REQUIRED)
 
-    find_package(FluidSynth CONFIG)
-    if (FluidSynth_FOUND)
-        include(FetchSoundfont)
-    endif()
+        find_package(FluidSynth CONFIG)
+        if (FluidSynth_FOUND)
+            include(FetchSoundfont)
+        endif()
 
-    # Find GStreamer
-    if (PkgConfig_FOUND)
-        pkg_check_modules(GST gstreamer-1.0 gstreamer-app-1.0)
+        # Find GStreamer
+        if (PkgConfig_FOUND)
+            pkg_check_modules(GST gstreamer-1.0 gstreamer-app-1.0)
+        endif()
     endif()
 
 endif()

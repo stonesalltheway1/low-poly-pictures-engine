@@ -126,7 +126,7 @@ if(3DMM_GUI STREQUAL "SDL")
     )
 
     # Select portfolio
-    if (WIN32 OR APPLE OR (UNIX AND NOT APPLE))
+    if ((WIN32 OR APPLE OR (UNIX AND NOT APPLE)) AND NOT EMSCRIPTEN)
         # Use Native File Dialog Extended for file dialogs
         include(FetchNativeFileDialogExtended)
         target_sources(
@@ -182,6 +182,16 @@ if (NOT 3DMM_PRECOMPILED_CHUNKY_PATH)
         "${PROJECT_SOURCE_DIR}/src/shared/shared.cht"
         "${PROJECT_SOURCE_DIR}/src/shared/sharecd.cht"
     )
+else()
+    # target_chomp_sources normally adds each .cht file's directory to the include path (studio.h needs
+    # stdiocrs.h from src/studio); add them explicitly when using precompiled chunky files.
+    target_include_directories(studio PRIVATE
+        "${PROJECT_SOURCE_DIR}/src/studio"
+        "${PROJECT_SOURCE_DIR}/src/building"
+        "${PROJECT_SOURCE_DIR}/src/helpaud"
+        "${PROJECT_SOURCE_DIR}/src/help"
+        "${PROJECT_SOURCE_DIR}/src/shared"
+    )
 endif()
 
 target_link_libraries(studio
@@ -205,6 +215,33 @@ if (WIN32)
 endif()
 
 set_property(TARGET studio PROPERTY OUTPUT_NAME 3dmovie)
+
+if (EMSCRIPTEN)
+    # Web build: 3dmovie.html/.js/.wasm/.data. Content and fonts are preloaded into the virtual filesystem
+    # under /app (see kauai/src/platemscripten.cpp).
+    set(3DMM_WEB_CONTENT_DIR "" CACHE PATH "Directory containing the installed 'Microsoft Kids' content to preload")
+    set(3DMM_WEB_FONTS_DIR "" CACHE PATH "Directory containing .ttf fonts to bundle (e.g. Comic Neue)")
+    set_target_properties(studio PROPERTIES SUFFIX ".html")
+    target_link_options(studio PRIVATE
+        "-sASYNCIFY"
+        "-sASYNCIFY_STACK_SIZE=1048576"
+        "-sSTACK_SIZE=8388608"
+        "-sALLOW_MEMORY_GROWTH=1"
+        "-sINITIAL_MEMORY=268435456"
+        "-sFORCE_FILESYSTEM=1"
+        "-lidbfs.js"
+    )
+    if (3DMM_WEB_CONTENT_DIR)
+        # The .avi intro/help videos must be present (the app looks them up even though video playback is not
+        # implemented on the web yet). TODO: stream them separately instead of bundling.
+        target_link_options(studio PRIVATE
+            "SHELL:--preload-file \"${3DMM_WEB_CONTENT_DIR}@/app/Microsoft Kids\""
+        )
+    endif()
+    if (3DMM_WEB_FONTS_DIR)
+        target_link_options(studio PRIVATE "SHELL:--preload-file \"${3DMM_WEB_FONTS_DIR}@/app/fonts\"")
+    endif()
+endif()
 
 if(MSVC)
     target_link_options(studio

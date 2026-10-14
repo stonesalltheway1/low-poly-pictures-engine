@@ -13,6 +13,14 @@
 #include "frame.h"
 ASSERTNAME
 
+#ifdef __EMSCRIPTEN__
+#include <cstdio>
+#define WEB_LOG_FAIL(step) fprintf(stderr, "[3dmm-web] APPB::_FInit step failed: %s\n", step)
+#else
+#define WEB_LOG_FAIL(step)
+#endif
+
+
 PAPPB vpappb;
 PCEX vpcex;
 PSNDM vpsndm;
@@ -429,27 +437,45 @@ bool APPB::_FInit(uint32_t grfapp, uint32_t grfgob, int32_t ginDef)
 
     // initialize the command dispatcher
     if (pvNil == (vpcex = CEX::PcexNew(20, 20)))
+    {
+        WEB_LOG_FAIL("CEX::PcexNew");
         return fFalse;
+    }
 
     // add the app as a handler (so it can catch menu commands)
     if (!vpcex->FAddCmh(vpappb, kcmhlAppb))
+    {
+        WEB_LOG_FAIL("FAddCmh");
         return fFalse;
+    }
 
     // do OS specific initialization
     if (!_FInitOS())
+    {
+        WEB_LOG_FAIL("_FInitOS");
         return fFalse;
+    }
 
     // Initialize the graphics stuff.
     if (!FInitGfx())
+    {
+        WEB_LOG_FAIL("FInitGfx");
         return fFalse;
+    }
 
     // set up the menus
     if (!_FInitMenu())
+    {
+        WEB_LOG_FAIL("_FInitMenu");
         return fFalse;
+    }
 
     // initialize the screen gob
     if (!GOB::FInitScreen(grfgob, ginDef))
+    {
+        WEB_LOG_FAIL("GOB::FInitScreen");
         return fFalse;
+    }
 
     // initialize sound functionality
     int32_t lwWav = kwav22M16;
@@ -458,7 +484,10 @@ bool APPB::_FInit(uint32_t grfapp, uint32_t grfgob, int32_t ginDef)
         lwWav = kwav44S16;
     }
     if (!_FInitSound(lwWav))
+    {
+        WEB_LOG_FAIL("_FInitSound");
         return fFalse;
+    }
 
     // import any external clipboard
     vpclip->Import();

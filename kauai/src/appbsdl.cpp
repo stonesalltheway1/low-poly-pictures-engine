@@ -6,6 +6,7 @@
     SDL base application class.
 
 ***************************************************************************/
+#include <cstdio>
 #include <iostream>
 #include "frame.h"
 #include "fcntl.h"
@@ -84,7 +85,14 @@ bool APPB::_FInitOS(void)
     GetStnAppName(&stnApp);
 
     // Initialize SDL
+#ifdef __EMSCRIPTEN__
+    // Not every subsystem exists in the browser (e.g. haptic), and SDL_INIT_EVERYTHING fails if any is missing
+    ret = SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_TIMER | SDL_INIT_EVENTS | SDL_INIT_GAMECONTROLLER);
+    if (ret < 0)
+        fprintf(stderr, "[3dmm-web] SDL_Init failed: %s\n", SDL_GetError());
+#else
     ret = SDL_Init(SDL_INIT_EVERYTHING);
+#endif
     Assert(ret >= 0, "SDLInit failed");
     if (ret < 0)
     {
@@ -106,6 +114,10 @@ bool APPB::_FInitOS(void)
     int32_t ypWindow = SDL_WINDOWPOS_UNDEFINED;
     SDL_Window *wnd = SDL_CreateWindow(u8szApp, xpWindow, ypWindow, kdxpLogical, kdypLogical, 0);
     Assert(wnd != pvNil, "no window returned from SDL_CreateWindow");
+#ifdef __EMSCRIPTEN__
+    if (wnd == pvNil)
+        fprintf(stderr, "[3dmm-web] SDL_CreateWindow failed: %s\n", SDL_GetError());
+#endif
     if (wnd == pvNil)
     {
         return fFalse;
@@ -821,6 +833,11 @@ void APPB::ShowCurs(void)
 {
     AssertThis(0);
 
+#ifdef __EMSCRIPTEN__
+    // End of a hidden-cursor drag: release the pointer lock taken in PositionCurs
+    if (SDL_GetRelativeMouseMode())
+        SDL_SetRelativeMouseMode(SDL_FALSE);
+#endif
     SDL_ShowCursor(SDL_ENABLE);
 }
 
@@ -837,6 +854,15 @@ void APPB::PositionCurs(int32_t xpScreen, int32_t ypScreen)
     // Convert coordinates back from screen (global) coordinates to local (window)
     // coordinates and use SDL_WarpMouseInWindow() instead of SDL_WarpMouseGlobal()
     // so we can apply the logical to window coordinate transformation.
+#ifdef __EMSCRIPTEN__
+    // Browsers can't move the real cursor, so warping does nothing and the next absolute mouse position makes the
+    // dragged actor jump ("speeds away"). The app only warps a hidden cursor while dragging actors/text boxes and
+    // then works with mouse deltas, so switch to relative mode (Pointer Lock): SDL then accumulates movement deltas
+    // from the warped position, exactly like a real warp on the desktop. ShowCurs releases it.
+    if (SDL_ShowCursor(SDL_QUERY) == SDL_DISABLE && !SDL_GetRelativeMouseMode())
+        SDL_SetRelativeMouseMode(SDL_TRUE);
+#endif
+
     pt.xp = xpScreen;
     pt.yp = ypScreen;
     GOB::PgobScreen()->MapPt(&pt, cooGlobal, cooLocal);
