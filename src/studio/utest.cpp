@@ -34,7 +34,15 @@ void LppTestInit(void);         // lpptest.cpp
 bool FLppTestDesktopMode(void); // lpptest.cpp
 #endif
 #ifdef __EMSCRIPTEN__
+#include <emscripten.h>
 void WebRecoveryInit(void); // webrecovery.cpp
+
+// The web build shows the page's own splash instead of the 1995 startup bitmaps (the "Microsoft Home" logo and the
+// "Microsoft 3D Movie Maker" title carry Microsoft's trademarks); the startup jingle and its timing stay
+static void WebShowSplash(bool fShow)
+{
+    EM_ASM({ if (Module.lppSplash) Module.lppSplash($0); }, fShow ? 1 : 0);
+}
 #endif
 
 // If the following value is defined, 3DMM displays the dlidDesktopResizing
@@ -376,6 +384,9 @@ bool APP::_FInit(uint32_t grfapp, uint32_t grfgob, int32_t ginDef)
     }
 
     dtsDelay = fStartupSound ? LwBound(kdtsHomeLogo - (TsCurrent() - tsHomeLogo), 0, kdtsHomeLogo) : 1;
+#ifdef __EMSCRIPTEN__
+    dtsDelay = 1; // no home logo to show on the web
+#endif
     if (!_FWaitSplashScreen(dtsDelay))
     {
         _fDontReportInitFailure = fTrue;
@@ -436,6 +447,9 @@ bool APP::_FInit(uint32_t grfapp, uint32_t grfgob, int32_t ginDef)
     }
 
     Pkwa()->SetMbmp(pvNil); // bring down splash screen
+#ifdef __EMSCRIPTEN__
+    WebShowSplash(false);
+#endif
 
     // If the user specified a doc on the command line, go straight
     // to the studio.  Otherwise, start the building.
@@ -1514,6 +1528,11 @@ bool APP::_FDisplayHomeLogo(void)
     GPT::SetActiveColors(pglclr, fpalIdentity);
     ReleasePpo(&pglclr);
 
+#ifdef __EMSCRIPTEN__
+    // No home logo on the web (see WebShowSplash)
+    return fTrue;
+#endif
+
     if (!_pcfl->FFind(kctgMbmp, kcnoMbmpHomeLogo, &blck))
         return fFalse;
     pmbmp = MBMP::PmbmpRead(&blck);
@@ -1829,6 +1848,11 @@ bool APP::_FShowSplashScreen(void)
 
     BLCK blck;
     PMBMP pmbmp;
+
+#ifdef __EMSCRIPTEN__
+    WebShowSplash(true);
+    return fTrue;
+#endif
 
     if (!_pcfl->FFind(kctgMbmp, kcnoMbmpSplash, &blck))
         return fFalse;
