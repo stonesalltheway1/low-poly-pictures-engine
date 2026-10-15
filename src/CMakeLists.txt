@@ -139,6 +139,13 @@ if(3DMM_GUI STREQUAL "SDL")
             PRIVATE
             nfd::nfd
         )
+    elseif (EMSCRIPTEN)
+        # The web page shows the open/save dialog
+        target_sources(
+            studio
+            PRIVATE
+            "${PROJECT_SOURCE_DIR}/src/studio/portfweb.cpp"
+        )
     else()
         # Portfolio not supported
         target_sources(
@@ -229,8 +236,15 @@ if (EMSCRIPTEN)
         "-sALLOW_MEMORY_GROWTH=1"
         "-sINITIAL_MEMORY=268435456"
         "-sFORCE_FILESYSTEM=1"
+        "-sEXPORTED_RUNTIME_METHODS=ccall,cwrap,UTF8ToString,FS,callMain,addRunDependency,removeRunDependency"
+        "-sDEFAULT_LIBRARY_FUNCS_TO_INCLUDE=$stringToNewUTF8"
         "-lidbfs.js"
     )
+    set(3DMM_WEB_SHELL_FILE "" CACHE FILEPATH "HTML page template for the web build (default: Emscripten's)")
+    if (3DMM_WEB_SHELL_FILE)
+        target_link_options(studio PRIVATE "SHELL:--shell-file \"${3DMM_WEB_SHELL_FILE}\"")
+        set_property(TARGET studio APPEND PROPERTY LINK_DEPENDS "${3DMM_WEB_SHELL_FILE}")
+    endif()
     if (3DMM_WEB_CONTENT_DIR)
         # The .avi intro/help videos must be present (the app looks them up even though video playback is not
         # implemented on the web yet). TODO: stream them separately instead of bundling.
