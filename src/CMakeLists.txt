@@ -506,9 +506,11 @@ if (WIN32 AND 3DMM_GUI STREQUAL "SDL")
     endif()
 endif()
 
-# Copy soundfont if required
-if(NOT "${3DMM_SOUNDFONT_PATH}" STREQUAL "")
-    install(FILES "${3DMM_SOUNDFONT_PATH}" DESTINATION ${resources_path})
+# Copy soundfont if required (FMS looks for soundfont.sf3, then soundfont.sf2)
+if(NOT "${3DMM_SOUNDFONT_PATH}" STREQUAL "" AND NOT EMSCRIPTEN)
+    get_filename_component(soundfont_ext "${3DMM_SOUNDFONT_PATH}" LAST_EXT)
+    string(TOLOWER "${soundfont_ext}" soundfont_ext)
+    install(FILES "${3DMM_SOUNDFONT_PATH}" DESTINATION ${resources_path} RENAME "soundfont${soundfont_ext}")
 endif()
 
 if (APPLE)
