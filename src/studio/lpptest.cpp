@@ -27,6 +27,7 @@
       open PATH                open a movie file in the studio ($APPDIR = folder of the app;
                                e.g. $APPDIR/Microsoft Kids/Users/Melanie/dialogue.3mm)
       scene N | frame N        jump to scene N (0-based) / frame N of the current scene
+      midiscan DIR             instruments used by all MIDI chunks in the chunky files under DIR (for the soundfont)
       release                  hand the mouse back to the real user
       echo TEXT
 ***************************************************************************/
@@ -39,6 +40,7 @@ uint64_t CframeMidiAudible(bool fReset); // midistreamfluidsynth.cpp
 #include <cstdio>
 #include <cstdlib>
 #include <deque>
+#include <map>
 #include <filesystem>
 #include <fstream>
 #include <sstream>
@@ -72,6 +74,7 @@ enum class SK
     WaitFor,
     Scene,
     Frame,
+    MidiScan,
     Error
 };
 
@@ -253,6 +256,8 @@ void Parse(const std::string &text, Batch *pbatch)
             add(SK::Scene, n[0]);
         else if (cmd == "frame" && n.size() >= 1)
             add(SK::Frame, n[0]);
+        else if (cmd == "midiscan" && !rest.empty())
+            add(SK::MidiScan, 0, 0, rest);
         else if (cmd == "release")
             add(SK::Release);
         else if (cmd == "echo")
@@ -322,6 +327,125 @@ bool FAtPlace(const std::string &place)
         if (s == place)
             return true;
     return false;
+}
+
+// List the instruments used by every MIDI chunk ('MIDS') in the chunky files under a folder: melodic presets
+// (bank, program) that play notes with their note range, drum kits, and drum notes. Used to trim the soundfont.
+std::string MidiScanJson(const std::string &dir)
+{
+    struct USE
+    {
+        int32_t cnote = 0, noteMin = 127, noteMax = 0;
+    };
+    std::map<std::pair<int, int>, USE> mpprog;  // (bank, program) -> use, melodic channels
+    std::map<int, USE> mpkit;                   // drum kit (program on channel 10) -> use
+    std::map<int, int32_t> mpdrum;              // drum note -> count
+    std::map<std::string, int32_t> mpfilecmids; // file -> number of MIDI chunks
+    int32_t cmids = 0;
+
+    std::error_code ec;
+    for (fs::recursive_directory_iterator it(dir, ec), end; !ec && it != end; it.increment(ec))
+    {
+        std::string ext = it->path().extension().string();
+        for (char &ch : ext)
+            ch = (char)tolower((unsigned char)ch);
+        if (ext != ".chk" && ext != ".3cn" && ext != ".3th" && ext != ".3mm")
+            continue;
+
+        STN stn;
+        FNI fni;
+        std::string path = it->path().string();
+        stn.SetUtf8Sz((PU8SZ)path.c_str());
+        if (!fni.FBuildFromPath(&stn))
+            continue;
+        PCFL pcfl = CFL::PcflOpen(&fni, fcflNil);
+        if (pcfl == pvNil)
+            continue;
+
+        int32_t cmidsFile = pcfl->CckiCtg(kctgMidi);
+        for (int32_t icki = 0; icki < cmidsFile; icki++)
+        {
+            CKI cki;
+            BLCK blck;
+            if (!pcfl->FGetCkiCtg(kctgMidi, icki, &cki, pvNil, &blck))
+                continue;
+            PMIDS pmids = MIDS::PmidsRead(&blck);
+            if (pmids == pvNil)
+                continue;
+            cmids++;
+
+            int rgbank[16] = {0}, rgprog[16] = {0};
+            MSTP mstp;
+            MIDEV midev;
+            mstp.Init(pmids);
+            while (mstp.FGetEvent(&midev))
+            {
+                if (midev.cb <= 0)
+                    continue;
+                int status = midev.rgbSend[0], ch = status & 0x0f, data1 = midev.rgbSend[1] & 0x7f;
+                int data2 = midev.rgbSend[2] & 0x7f;
+                switch (status & 0xf0)
+                {
+                case 0xb0:
+                    if (data1 == 0)
+                        rgbank[ch] = data2; // bank select (MSB)
+                    break;
+                case 0xc0:
+                    rgprog[ch] = data1;
+                    break;
+                case 0x90: {
+                    if (data2 == 0)
+                        break; // note off
+                    USE *puse = (ch == 9) ? &mpkit[rgprog[ch]] : &mpprog[{rgbank[ch], rgprog[ch]}];
+                    puse->cnote++;
+                    puse->noteMin = LwMin(puse->noteMin, data1);
+                    puse->noteMax = LwMax(puse->noteMax, data1);
+                    if (ch == 9)
+                        mpdrum[data1]++;
+                    break;
+                }
+                }
+            }
+            ReleasePpo(&pmids);
+        }
+        if (cmidsFile > 0)
+            mpfilecmids[it->path().filename().string()] = cmidsFile;
+        ReleasePpo(&pcfl);
+    }
+
+    std::ostringstream js;
+    js << "{\"chunks\":" << cmids << ",\"files\":{";
+    bool fFirst = true;
+    for (auto &kv : mpfilecmids)
+    {
+        js << (fFirst ? "" : ",") << JsonStr(kv.first) << ":" << kv.second;
+        fFirst = false;
+    }
+    js << "},\"programs\":[";
+    fFirst = true;
+    for (auto &kv : mpprog)
+    {
+        js << (fFirst ? "" : ",") << "{\"bank\":" << kv.first.first << ",\"program\":" << kv.first.second
+           << ",\"notes\":" << kv.second.cnote << ",\"min\":" << kv.second.noteMin << ",\"max\":" << kv.second.noteMax
+           << "}";
+        fFirst = false;
+    }
+    js << "],\"drumkits\":[";
+    fFirst = true;
+    for (auto &kv : mpkit)
+    {
+        js << (fFirst ? "" : ",") << "{\"program\":" << kv.first << ",\"notes\":" << kv.second.cnote << "}";
+        fFirst = false;
+    }
+    js << "],\"drumnotes\":[";
+    fFirst = true;
+    for (auto &kv : mpdrum)
+    {
+        js << (fFirst ? "" : ",") << kv.first;
+        fFirst = false;
+    }
+    js << "]}";
+    return js.str();
 }
 
 // Audio output since the previous state: peak level (0..1), audible ms, mixed ms, Web Audio context state
@@ -600,6 +724,9 @@ void RunStep(const Step &st, uint32_t ts)
         g_tsNext = ts + 300;
         break;
     }
+    case SK::MidiScan:
+        g_cur.results.push_back("{\"midiscan\":" + MidiScanJson(ExpandPath(st.str)) + "}");
+        break;
     case SK::Release:
         TestSetInputActive(fFalse);
         break;
