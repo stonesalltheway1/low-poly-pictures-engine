@@ -198,6 +198,12 @@ PGPT GPT::PgptNew(HDC hdc)
 ***************************************************************************/
 GPT::~GPT(void)
 {
+    if (_textureSharp != pvNil)
+    {
+        SDL_DestroyTexture(_textureSharp);
+        _textureSharp = pvNil;
+    }
+
     if (_texture != pvNil)
     {
         SDL_DestroyTexture(_texture);
@@ -276,7 +282,11 @@ void GPT::UpdateTexture()
 
 void GPT::RebuildTexture(void)
 {
-    // Free the existing texture
+    // Free the existing textures
+    if (_textureSharp != pvNil)
+        SDL_DestroyTexture(_textureSharp);
+    _textureSharp = pvNil;
+    _cscaleSharp = 0;
     if (_texture != pvNil)
         SDL_DestroyTexture(_texture);
 
@@ -899,6 +909,73 @@ void GPT::Unlock(void)
 }
 
 /***************************************************************************
+    Scaled copy between surfaces. SDL_BlitScaled can't scale 8-bit (palette
+    index) surfaces, which is what 3DMM uses, so copy those index by index with
+    nearest-pixel sampling (like StretchBlt between palette bitmaps on Windows).
+    Respects the destination's clip rectangle.
+***************************************************************************/
+static bool _FBlitScaledSDL(SDL_Surface *psurfSrc, SDL_Rect *psrectSrc, SDL_Surface *psurfDst, SDL_Rect *psrectDst)
+{
+    if (psurfSrc->format->BytesPerPixel != 1 || psurfDst->format->BytesPerPixel != 1)
+        return SDL_BlitScaled(psurfSrc, psrectSrc, psurfDst, psrectDst) == 0;
+    if (psrectSrc->w <= 0 || psrectSrc->h <= 0 || psrectDst->w <= 0 || psrectDst->h <= 0)
+        return true;
+
+    SDL_Rect srectClip;
+    if (!SDL_IntersectRect(psrectDst, &psurfDst->clip_rect, &srectClip))
+        return true;
+
+    // Different palettes (e.g. the stage in the scene's colours shrunk into a thumbnail in the studio's colours):
+    // translate each index to the nearest destination colour, as SDL_BlitSurface does
+    uint8_t rgbMap[256];
+    for (int i = 0; i < 256; i++)
+        rgbMap[i] = (uint8_t)i;
+    SDL_Palette *ppalSrc = psurfSrc->format->palette, *ppalDst = psurfDst->format->palette;
+    if (ppalSrc != pvNil && ppalDst != pvNil && ppalSrc != ppalDst)
+    {
+        for (int i = 0; i < ppalSrc->ncolors && i < 256; i++)
+        {
+            SDL_Color clr = ppalSrc->colors[i];
+            bool fSame = i < ppalDst->ncolors && ppalDst->colors[i].r == clr.r && ppalDst->colors[i].g == clr.g &&
+                         ppalDst->colors[i].b == clr.b;
+            if (!fSame)
+                rgbMap[i] = (uint8_t)SDL_MapRGB(psurfDst->format, clr.r, clr.g, clr.b);
+        }
+    }
+
+    bool fLockSrc = SDL_MUSTLOCK(psurfSrc), fLockDst = SDL_MUSTLOCK(psurfDst);
+    if (fLockSrc && SDL_LockSurface(psurfSrc) != 0)
+        return false;
+    if (fLockDst && SDL_LockSurface(psurfDst) != 0)
+    {
+        if (fLockSrc)
+            SDL_UnlockSurface(psurfSrc);
+        return false;
+    }
+
+    for (int yp = srectClip.y; yp < srectClip.y + srectClip.h; yp++)
+    {
+        int ypSrc = psrectSrc->y + (int)(((int64_t)(yp - psrectDst->y) * psrectSrc->h) / psrectDst->h);
+        if (ypSrc < 0 || ypSrc >= psurfSrc->h)
+            continue;
+        const uint8_t *pbSrcRow = (const uint8_t *)psurfSrc->pixels + ypSrc * psurfSrc->pitch;
+        uint8_t *pbDstRow = (uint8_t *)psurfDst->pixels + yp * psurfDst->pitch;
+        for (int xp = srectClip.x; xp < srectClip.x + srectClip.w; xp++)
+        {
+            int xpSrc = psrectSrc->x + (int)(((int64_t)(xp - psrectDst->x) * psrectSrc->w) / psrectDst->w);
+            if (xpSrc >= 0 && xpSrc < psurfSrc->w)
+                pbDstRow[xp] = rgbMap[pbSrcRow[xpSrc]];
+        }
+    }
+
+    if (fLockDst)
+        SDL_UnlockSurface(psurfDst);
+    if (fLockSrc)
+        SDL_UnlockSurface(psurfSrc);
+    return true;
+}
+
+/***************************************************************************
     Copy bits from pgptSrc to this GPT.
 ***************************************************************************/
 void GPT::CopyPixels(PGPT pgptSrc, RCS *prcsSrc, RCS *prcsDst, GDD *pgdd)
@@ -931,12 +1008,24 @@ void GPT::CopyPixels(PGPT pgptSrc, RCS *prcsSrc, RCS *prcsDst, GDD *pgdd)
         fSetClip = fTrue;
     }
 
+    // Source and destination may differ in size (like StretchBlt on Windows): scene thumbnails shrink the stage,
+    // "Better Speed" stretches a half-height render. SDL_BlitSurface never scales, so use a scaled blit then.
+    bool fScale = (prcsSrc->xpRight - prcsSrc->xpLeft != prcsDst->xpRight - prcsDst->xpLeft) ||
+                  (prcsSrc->ypBottom - prcsSrc->ypTop != prcsDst->ypBottom - prcsDst->ypTop);
+
     if (_pregnClip == pvNil || _pregnClip->FIsRc())
     {
         // Clipping region is a rectangle
         srectSrc = *prcsSrc;
         srectDst = *prcsDst;
-        AssertDoSDL(SDL_BlitSurface(pgptSrc->_surface, &srectSrc, _surface, &srectDst));
+        if (fScale)
+        {
+            AssertDo(_FBlitScaledSDL(pgptSrc->_surface, &srectSrc, _surface, &srectDst), SDL_GetError());
+        }
+        else
+        {
+            AssertDoSDL(SDL_BlitSurface(pgptSrc->_surface, &srectSrc, _surface, &srectDst));
+        }
     }
     else
     {
@@ -970,8 +1059,26 @@ void GPT::CopyPixels(PGPT pgptSrc, RCS *prcsSrc, RCS *prcsDst, GDD *pgdd)
                 srectSrc.w = srectDst.w;
                 srectSrc.h = srectDst.h;
 
-                // Blit the rectangle
-                AssertDoSDL(SDL_BlitSurface(pgptSrc->_surface, &srectSrc, _surface, &srectDst));
+                if (fScale)
+                {
+                    // Map this run of the destination back into the (differently sized) source
+                    int32_t dxpSrc = prcsSrc->xpRight - prcsSrc->xpLeft, dypSrc = prcsSrc->ypBottom - prcsSrc->ypTop;
+                    int32_t dxpDst = prcsDst->xpRight - prcsDst->xpLeft, dypDst = prcsDst->ypBottom - prcsDst->ypTop;
+                    int32_t xpSrc0 = LwMulDiv(srectDst.x - prcsDst->xpLeft, dxpSrc, dxpDst);
+                    int32_t xpSrc1 = LwMulDiv(srectDst.x + srectDst.w - prcsDst->xpLeft, dxpSrc, dxpDst);
+                    int32_t ypSrc0 = LwMulDiv(srectDst.y - prcsDst->ypTop, dypSrc, dypDst);
+                    int32_t ypSrc1 = LwMulDiv(srectDst.y + srectDst.h - prcsDst->ypTop, dypSrc, dypDst);
+                    srectSrc.x = prcsSrc->xpLeft + xpSrc0;
+                    srectSrc.y = prcsSrc->ypTop + ypSrc0;
+                    srectSrc.w = LwMax(1, xpSrc1 - xpSrc0);
+                    srectSrc.h = LwMax(1, ypSrc1 - ypSrc0);
+                    AssertDo(_FBlitScaledSDL(pgptSrc->_surface, &srectSrc, _surface, &srectDst), SDL_GetError());
+                }
+                else
+                {
+                    // Blit the rectangle
+                    AssertDoSDL(SDL_BlitSurface(pgptSrc->_surface, &srectSrc, _surface, &srectDst));
+                }
 
                 // Fetch the next run
                 regsc.XpFetch();
@@ -1116,8 +1223,48 @@ void GPT::Flip()
 
     Assert(!_fOffscreen, "drawing an offscreen GPT to the screen?");
 
-    // Paint the texture
-    AssertDoSDL(SDL_RenderCopy(_renderer, _texture, NULL, NULL));
+    // Windows larger than 640x480 that aren't an exact multiple: "sharp bilinear" scaling. Enlarge to the next
+    // whole number with crisp pixels into a render target, then let the GPU shrink that smoothly to the window: even
+    // pixels at any size, with only the pixel edges blended (no blur, no uneven blocks).
+    int dxpOut = 0, dypOut = 0;
+    int32_t cscale = 1;
+    bool fExact = true;
+    if (SDL_GetRendererOutputSize(_renderer, &dxpOut, &dypOut) == 0 && dxpOut > 0 && dypOut > 0)
+    {
+        // the 640x480 picture is letterboxed into the window at the smaller of the two ratios
+        bool fWide = (int64_t)dxpOut * kdypLogical >= (int64_t)dypOut * kdxpLogical;
+        int32_t dzpOut = fWide ? dypOut : dxpOut, dzpLogical = fWide ? kdypLogical : kdxpLogical;
+        cscale = LwMin(8, (dzpOut + dzpLogical - 1) / dzpLogical);
+        fExact = (dzpOut % dzpLogical) == 0;
+    }
+
+    if (cscale >= 2 && !fExact && SDL_RenderTargetSupported(_renderer))
+    {
+        if (_textureSharp == pvNil || _cscaleSharp != cscale)
+        {
+            if (_textureSharp != pvNil)
+                SDL_DestroyTexture(_textureSharp);
+            _textureSharp = SDL_CreateTexture(_renderer, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_TARGET,
+                                              cscale * kdxpLogical, cscale * kdypLogical);
+            _cscaleSharp = cscale;
+            if (_textureSharp != pvNil)
+                SDL_SetTextureScaleMode(_textureSharp, SDL_ScaleModeLinear);
+        }
+    }
+
+    SDL_SetTextureScaleMode(_texture, SDL_ScaleModeNearest);
+    if (cscale >= 2 && !fExact && _textureSharp != pvNil && _cscaleSharp == cscale &&
+        SDL_SetRenderTarget(_renderer, _textureSharp) == 0)
+    {
+        AssertDoSDL(SDL_RenderCopy(_renderer, _texture, NULL, NULL));
+        SDL_SetRenderTarget(_renderer, NULL);
+        AssertDoSDL(SDL_RenderCopy(_renderer, _textureSharp, NULL, NULL));
+    }
+    else
+    {
+        // Paint the texture
+        AssertDoSDL(SDL_RenderCopy(_renderer, _texture, NULL, NULL));
+    }
     SDL_RenderPresent(_renderer);
 }
 

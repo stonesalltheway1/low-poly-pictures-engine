@@ -756,6 +756,10 @@ class GPT : public GPT_PAR
     SDL_Surface *_surface = pvNil;
     // Texture used for rendering the image
     SDL_Texture *_texture = pvNil;
+    // Whole-number enlargement of _texture, then smoothed to the window ("sharp bilinear"): even pixels at any
+    // window size without blur. Created when the window is at least twice the logical size.
+    SDL_Texture *_textureSharp = pvNil;
+    int32_t _cscaleSharp = 0;
     // Palette for offscreen GPTs
     SDL_Palette *_palOff = pvNil;
 
