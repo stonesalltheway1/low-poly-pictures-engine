@@ -2313,8 +2313,12 @@ void APP::_ParseCommandLine(void)
     {
         pch = _rgpszArgv[ipsz];
 
-        // Look for /options or -options
+        // Look for /options or -options (on Windows; elsewhere absolute paths start with '/', so only -options)
+#ifdef WIN
         if (*pch == ChLit('/') || *pch == ChLit('-'))
+#else
+        if (*pch == ChLit('-'))
+#endif
         {
             switch (ChUpper(*(pch + 1)))
             {
