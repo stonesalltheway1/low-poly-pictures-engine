@@ -31,6 +31,11 @@
       scene N | frame N        jump to scene N (0-based) / frame N of the current scene
       type TEXT                type text (e.g. into a name field)
       midiscan DIR             instruments used by all MIDI chunks in the chunky files under DIR (for the soundfont)
+      copy SRC | DST           copy a file ($TMPDIR = a writable scratch folder for the test)
+      chunkadd PATH | CTG CHID [SCENE] | TEXT   add a chunk with TEXT as a child of the movie chunk in a movie
+                               file (or of scene SCENE); CTG is 4 characters, e.g. LPDC
+      chunkget PATH | CTG CHID [SCENE]   read such a chunk back: {"found":..., "text":...}
+      saveas PATH              save the open movie to PATH (the studio's Save As, without the dialog)
       release                  hand the mouse back to the real user
       echo TEXT
 ***************************************************************************/
@@ -79,6 +84,10 @@ enum class SK
     Scene,
     Frame,
     MidiScan,
+    Copy,
+    ChunkAdd,
+    ChunkGet,
+    SaveAs,
     Type,
     Error
 };
@@ -270,6 +279,10 @@ void Parse(const std::string &text, Batch *pbatch)
         }
         else if (cmd == "midiscan" && !rest.empty())
             add(SK::MidiScan, 0, 0, rest);
+        else if ((cmd == "copy" || cmd == "chunkadd" || cmd == "chunkget") && !rest.empty())
+            add(cmd == "copy" ? SK::Copy : (cmd == "chunkadd" ? SK::ChunkAdd : SK::ChunkGet), 0, 0, rest);
+        else if (cmd == "saveas" && !rest.empty())
+            add(SK::SaveAs, 0, 0, rest);
         else if (cmd == "release")
             add(SK::Release);
         else if (cmd == "echo")
@@ -677,6 +690,17 @@ void PollInbox(void)
 
 std::string ExpandPath(std::string path)
 {
+    // $TMPDIR: a writable scratch folder (desktop: in the test directory; browser: in the virtual filesystem)
+    const std::string keyTmp = "$TMPDIR";
+    size_t posTmp = path.find(keyTmp);
+    if (posTmp != std::string::npos)
+    {
+        std::string dir = g_dir.empty() ? std::string("/lpptest/files") : (fs::path(g_dir) / "files").string();
+        std::error_code ec;
+        fs::create_directories(dir, ec);
+        path.replace(posTmp, keyTmp.size(), dir);
+    }
+
     const std::string key = "$APPDIR";
     size_t pos = path.find(key);
     if (pos == std::string::npos)
@@ -692,6 +716,62 @@ std::string ExpandPath(std::string path)
             dir.pop_back();
     }
     return path.replace(pos, key.size(), dir);
+}
+
+// Split "a | b | c" into trimmed parts
+std::vector<std::string> SplitBar(const std::string &s)
+{
+    std::vector<std::string> v;
+    size_t start = 0;
+    for (;;)
+    {
+        size_t pos = s.find('|', start);
+        std::string part = s.substr(start, pos == std::string::npos ? std::string::npos : pos - start);
+        size_t b = part.find_first_not_of(' '), e = part.find_last_not_of(' ');
+        v.push_back(b == std::string::npos ? std::string() : part.substr(b, e - b + 1));
+        if (pos == std::string::npos)
+            break;
+        start = pos + 1;
+    }
+    return v;
+}
+
+// "CTG CHID [SCENE]": a 4-character chunk type, a child id, and optionally a scene (-1: child of the movie chunk)
+bool FParseChunkSpec(const std::string &spec, CTG *pctg, CHID *pchid, int32_t *piscen)
+{
+    std::istringstream in(spec);
+    std::string sctg;
+    int64_t chid = 0, iscen = -1;
+    if (!(in >> sctg >> chid) || sctg.size() != 4)
+        return false;
+    in >> iscen;
+    *pctg = KLCONST4((CTG)(uint8_t)sctg[0], (CTG)(uint8_t)sctg[1], (CTG)(uint8_t)sctg[2], (CTG)(uint8_t)sctg[3]);
+    *pchid = (CHID)chid;
+    *piscen = (int32_t)iscen;
+    return true;
+}
+
+// Open a movie file's chunky file and find the parent chunk: the movie chunk, or its scene iscen
+PCFL PcflOpenMovie(const std::string &path, bool fWrite, CKI *pckiPar, int32_t iscen)
+{
+    FNI fni;
+    STN stn;
+    stn.SetUtf8Sz((PU8SZ)path.c_str());
+    if (!fni.FBuildFromPath(&stn))
+        return pvNil;
+    PCFL pcfl = CFL::PcflOpen(&fni, fWrite ? fcflWriteEnable : fcflNil);
+    if (pcfl == pvNil)
+        return pvNil;
+    CKI cki;
+    KID kid;
+    if (!pcfl->FGetCkiCtg(kctgMvie, 0, &cki) ||
+        (iscen >= 0 && !pcfl->FGetKidChidCtg(kctgMvie, cki.cno, (CHID)iscen, kctgScen, &kid)))
+    {
+        ReleasePpo(&pcfl);
+        return pvNil;
+    }
+    *pckiPar = iscen >= 0 ? kid.cki : cki;
+    return pcfl;
 }
 
 void RunStep(const Step &st, uint32_t ts)
@@ -789,6 +869,103 @@ void RunStep(const Step &st, uint32_t ts)
     case SK::MidiScan:
         g_cur.results.push_back("{\"midiscan\":" + MidiScanJson(ExpandPath(st.str)) + "}");
         break;
+    case SK::Copy: {
+        // Through Kauai's file layer: in the browser, content files may be placeholders read from the server
+        std::vector<std::string> parts = SplitBar(st.str);
+        std::error_code ec;
+        bool fOk = parts.size() == 2;
+        if (fOk)
+        {
+            std::string src = ExpandPath(parts[0]), dst = ExpandPath(parts[1]);
+            fs::create_directories(fs::path(dst).parent_path(), ec);
+            fs::remove(dst, ec);
+            FNI fniSrc, fniDst;
+            STN stnSrc, stnDst;
+            stnSrc.SetUtf8Sz((PU8SZ)src.c_str());
+            stnDst.SetUtf8Sz((PU8SZ)dst.c_str());
+            PFIL pfilSrc = fniSrc.FBuildFromPath(&stnSrc) ? FIL::PfilOpen(&fniSrc) : pvNil;
+            PFIL pfilDst = (pfilSrc != pvNil && fniDst.FBuildFromPath(&stnDst)) ? FIL::PfilCreate(&fniDst) : pvNil;
+            fOk = false;
+            if (pfilDst != pvNil)
+            {
+                FLO floSrc, floDst;
+                floSrc.pfil = pfilSrc;
+                floSrc.fp = 0;
+                floSrc.cb = pfilSrc->FpMac();
+                floDst.pfil = pfilDst;
+                floDst.fp = 0;
+                floDst.cb = floSrc.cb;
+                fOk = pfilDst->FSetFpMac(floSrc.cb) && floSrc.FCopy(&floDst);
+            }
+            ReleasePpo(&pfilDst);
+            ReleasePpo(&pfilSrc);
+        }
+        g_cur.results.push_back("{\"copy\":" + JsonStr(st.str) + ",\"ok\":" + (fOk ? "true" : "false") + "}");
+        if (!fOk)
+            g_cur.errors.push_back("copy failed: " + st.str);
+        break;
+    }
+    case SK::ChunkAdd:
+    case SK::ChunkGet: {
+        // Used to check how the studio treats data it doesn't know (Director's Cut extras in a classic movie)
+        bool fAdd = st.sk == SK::ChunkAdd;
+        std::vector<std::string> parts = SplitBar(st.str);
+        CTG ctg;
+        CHID chid;
+        int32_t iscen;
+        CKI ckiPar;
+        PCFL pcfl = pvNil;
+        std::string err, text;
+        bool fFound = false;
+        if (parts.size() < (fAdd ? 3u : 2u) || !FParseChunkSpec(parts[1], &ctg, &chid, &iscen))
+            err = "bad arguments";
+        else if ((pcfl = PcflOpenMovie(ExpandPath(parts[0]), fAdd, &ckiPar, iscen)) == pvNil)
+            err = "can't open the movie (or that scene) in " + parts[0];
+        else if (fAdd)
+        {
+            CNO cno;
+            text = parts[2];
+            if (!pcfl->FAddPv(text.data(), (int32_t)text.size(), ctg, &cno) ||
+                !pcfl->FAdoptChild(ckiPar.ctg, ckiPar.cno, ctg, cno, chid) || !pcfl->FSave(kctgSoc))
+            {
+                err = "write failed";
+            }
+        }
+        else
+        {
+            KID kid;
+            BLCK blck;
+            if (pcfl->FGetKidChidCtg(ckiPar.ctg, ckiPar.cno, chid, ctg, &kid) && pcfl->FFind(kid.cki.ctg, kid.cki.cno, &blck))
+            {
+                std::string buf((size_t)blck.Cb(), ' ');
+                fFound = buf.empty() || blck.FReadRgb(&buf[0], (int32_t)buf.size(), 0);
+                text = buf;
+            }
+        }
+        ReleasePpo(&pcfl);
+        if (fAdd)
+            g_cur.results.push_back("{\"chunkadd\":" + JsonStr(st.str) + ",\"ok\":" + (err.empty() ? "true" : "false") + "}");
+        else
+            g_cur.results.push_back("{\"chunkget\":" + JsonStr(st.str) + ",\"found\":" + (fFound ? "true" : "false") +
+                                    ",\"text\":" + JsonStr(text) + "}");
+        if (!err.empty())
+            g_cur.errors.push_back((fAdd ? "chunkadd: " : "chunkget: ") + err);
+        break;
+    }
+    case SK::SaveAs: {
+        PSTDIO pstdio = vapp.Pstdio();
+        PMVIE pmvie = pstdio != pvNil ? pstdio->Pmvie() : pvNil;
+        std::string path = ExpandPath(st.str);
+        FNI fni;
+        STN stn;
+        stn.SetUtf8Sz((PU8SZ)path.c_str());
+        bool fOk = pmvie != pvNil && fni.FBuildFromPath(&stn) && pmvie->FSaveToFni(&fni, fTrue);
+        g_cur.results.push_back("{\"saveas\":" + JsonStr(path) + ",\"ok\":" + (fOk ? "true" : "false") + "}");
+        if (!fOk)
+            g_cur.errors.push_back("saveas failed: " + path);
+        g_tsNext = ts + 300;
+        break;
+    }
     case SK::Release:
         TestSetInputActive(fFalse);
         break;
