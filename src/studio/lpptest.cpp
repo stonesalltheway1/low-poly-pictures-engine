@@ -18,6 +18,7 @@
       moveactor [DX DY]        move to the selected actor's center (+ DX,DY), e.g. before dragging it
       key NAME [ctrl|shift|alt]   SDL key name: Return, Escape, Left, Z, ...
       keydown NAME | keyup NAME    hold / release a key (Up/Down during a drag change height)
+      mods ctrl|shift|alt|none    hold modifier keys for the following clicks (e.g. Ctrl+click Next adds a frame)
       wait MS
       waitfor PLACE [TIMEOUTMS]   wait until a place is on screen: studio, scene, map, ticket1,
                                ticket2, lobby1, backstage1, imagin, street, theatre1, ... (see kplaces),
@@ -254,6 +255,20 @@ void Parse(const std::string &text, Batch *pbatch)
             add(SK::KeyUp, 0, 0, words[0]);
             add(SK::Mods, 0);
             add(SK::Wait, 80);
+        }
+        else if (cmd == "mods")
+        {
+            uint32_t grfmod = 0;
+            for (const std::string &w : words)
+            {
+                if (w == "ctrl")
+                    grfmod |= KMOD_LCTRL;
+                else if (w == "shift")
+                    grfmod |= KMOD_LSHIFT;
+                else if (w == "alt")
+                    grfmod |= KMOD_LALT;
+            }
+            add(SK::Mods, grfmod);
         }
         else if ((cmd == "keydown" || cmd == "keyup") && !words.empty())
         {

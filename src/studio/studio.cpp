@@ -12,6 +12,9 @@
 //
 
 #include "studio.h"
+#ifdef KAUAI_SDL
+#include "testhooks.h"
+#endif // KAUAI_SDL
 
 ASSERTNAME
 RTCLASS(STDIO)
@@ -2831,6 +2834,12 @@ bool SMCC::FQueryPurgeSounds(void)
     AssertThis(0);
 
     STN stnMsg;
+
+#ifdef KAUAI_SDL
+    // While the test driver controls input nobody can answer: keep the sounds (the question's "no")
+    if (FTestInputActive())
+        return fFalse;
+#endif // KAUAI_SDL
 
     AssertDo(vapp.FGetStnApp(idsPurgeSounds, &stnMsg), "String not present");
     return vapp.TModal(vapp.PcrmAll(), ktpcQueryPurgeSounds, &stnMsg, bkYesNo) == tYes;
