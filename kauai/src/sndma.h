@@ -8,6 +8,7 @@
 #ifndef SNDMA_H
 #define SNDMA_H
 
+#include <atomic>
 #include <miniaudio.h>
 
 // Manages a single instance of the miniaudio engine
@@ -28,11 +29,22 @@ class MiniaudioManager : public MiniaudioManager_PAR
 
     static PMiniaudioManager Pmanager();
 
+    // Output level meter (used by tests): loudest sample and number of audible / total frames mixed
+    // since the last reset
+    void GetMeter(float *pflPeak, uint64_t *pcframeAudible, uint64_t *pcframe, bool fReset);
+
   protected:
     ma_engine _engine;
     bool _fInit;
+    bool _fInitFailed;
 
     MUTX _mutxInit;
+
+    std::atomic<float> _flPeak{0};
+    std::atomic<uint64_t> _cframeAudible{0};
+    std::atomic<uint64_t> _cframe{0};
+
+    static void _MeterProc(void *pvUser, float *prgflOut, ma_uint64 cframe);
 };
 
 // Audio stream

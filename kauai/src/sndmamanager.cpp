@@ -18,6 +18,7 @@ MiniaudioManager::MiniaudioManager()
 {
     ClearPb(&_engine, SIZEOF(_engine));
     _fInit = fFalse;
+    _fInitFailed = fFalse;
 }
 
 MiniaudioManager::~MiniaudioManager()
@@ -33,9 +34,16 @@ ma_engine *MiniaudioManager::Pengine()
     ma_engine *pengine = &_engine;
 
     _mutxInit.Enter();
-    if (!_fInit)
+    if (_fInitFailed)
+    {
+        // No audio output (e.g. no Web Audio in this browser): don't retry
+        pengine = pvNil;
+    }
+    else if (!_fInit)
     {
         ma_engine_config config = ma_engine_config_init();
+        config.onProcess = _MeterProc;
+        config.pProcessUserData = this;
 
         ma_result result = ma_engine_init(&config, &_engine);
         AssertMaSuccess(result, "ma_engine_init failed");
@@ -45,12 +53,56 @@ ma_engine *MiniaudioManager::Pengine()
         }
         else
         {
+            _fInitFailed = fTrue;
             pengine = pvNil;
         }
     }
 
     _mutxInit.Leave();
     return pengine;
+}
+
+/***************************************************************************
+    Engine callback (audio thread): measure the mixed output
+***************************************************************************/
+void MiniaudioManager::_MeterProc(void *pvUser, float *prgflOut, ma_uint64 cframe)
+{
+    PMiniaudioManager pmanager = (PMiniaudioManager)pvUser;
+    ma_uint32 cchannel = ma_engine_get_channels(&pmanager->_engine);
+    const float kflAudible = 1.0f / 1024; // about -60 dB
+    float flPeak = pmanager->_flPeak.load();
+    uint64_t cframeAudible = 0;
+
+    for (ma_uint64 iframe = 0; iframe < cframe; iframe++)
+    {
+        float flFrame = 0;
+        for (ma_uint32 ichannel = 0; ichannel < cchannel; ichannel++)
+        {
+            float fl = prgflOut[iframe * cchannel + ichannel];
+            if (fl < 0)
+                fl = -fl;
+            if (fl > flFrame)
+                flFrame = fl;
+        }
+        if (flFrame > flPeak)
+            flPeak = flFrame;
+        if (flFrame >= kflAudible)
+            cframeAudible++;
+    }
+
+    pmanager->_flPeak = flPeak;
+    pmanager->_cframeAudible += cframeAudible;
+    pmanager->_cframe += cframe;
+}
+
+/***************************************************************************
+    Return the output level meter, optionally resetting it
+***************************************************************************/
+void MiniaudioManager::GetMeter(float *pflPeak, uint64_t *pcframeAudible, uint64_t *pcframe, bool fReset)
+{
+    *pflPeak = fReset ? _flPeak.exchange(0) : _flPeak.load();
+    *pcframeAudible = fReset ? _cframeAudible.exchange(0) : _cframeAudible.load();
+    *pcframe = fReset ? _cframe.exchange(0) : _cframe.load();
 }
 
 PMiniaudioManager MiniaudioManager::Pmanager()
