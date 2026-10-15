@@ -37,6 +37,12 @@ static void _FluidLog(int level, const char *pszMessage, void *pvData)
 {
     if (level == FLUID_DBG || strstr(pszMessage, "is a stub") != pvNil)
         return;
+#ifdef NDEBUG
+    // Release builds: only errors reach the browser console (e.g. not GeneralUser GS's "invalid sample loops were
+    // sanitized" warning on every start)
+    if (level >= FLUID_WARN)
+        return;
+#endif // NDEBUG
     fluid_default_log_function(level, pszMessage, pvData);
 }
 #endif // __EMSCRIPTEN__
