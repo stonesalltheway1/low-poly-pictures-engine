@@ -39,7 +39,6 @@
 
 ***************************************************************************/
 #include "soc.h"
-#include <cstdio>
 ASSERTNAME
 
 RTCLASS(TAGM)
@@ -343,19 +342,8 @@ bool TAGM::_FBuildFniHD(int32_t sid, PFNI pfniHD, bool *pfExists)
     }
 
     fni = _fniHDRoot;
-#ifdef __EMSCRIPTEN__
-    {
-        STN stnRoot;
-        fni.GetStnPath(&stnRoot);
-        fprintf(stderr, "[3dmm-web] TAGM HD source sid=%d long='%s' short='%s' root='%s'\n", (int)sid, stnLong.Psz(),
-                stnShort.Psz(), stnRoot.Psz());
-    }
-#endif
     if (!fni.FDownDir(&stnLong, ffniMoveToDir) && !fni.FDownDir(&stnShort, ffniMoveToDir))
     {
-#ifdef __EMSCRIPTEN__
-        fprintf(stderr, "[3dmm-web] TAGM HD source dir not found\n");
-#endif
         return fTrue; // fniHD doesn't exist
     }
     *pfniHD = fni;
@@ -376,30 +364,12 @@ bool TAGM::_FDetermineIfContentOnFni(PFNI pfni, bool *pfContentOnFni)
     FTG ftgContent = kftgContent;
     FNI fni;
 
-#ifdef __EMSCRIPTEN__
-    fprintf(stderr, "[3dmm-web] TAGM content check: FNE::FInit\n");
-#endif
     if (!fne.FInit(pfni, &ftgContent, 1))
-    {
-#ifdef __EMSCRIPTEN__
-        fprintf(stderr, "[3dmm-web] TAGM content check: FNE::FInit failed\n");
-#endif
         return fFalse;
-    }
-#ifdef __EMSCRIPTEN__
-    fprintf(stderr, "[3dmm-web] TAGM content check: FNE::FNextFni\n");
-#endif
     if (fne.FNextFni(&fni))
         *pfContentOnFni = fTrue;
     else
         *pfContentOnFni = fFalse;
-#ifdef __EMSCRIPTEN__
-    {
-        STN stnPath;
-        pfni->GetStnPath(&stnPath);
-        fprintf(stderr, "[3dmm-web] TAGM content check '%s' -> %s\n", stnPath.Psz(), *pfContentOnFni ? "found" : "none");
-    }
-#endif
     return fTrue;
 }
 

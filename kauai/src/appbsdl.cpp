@@ -92,7 +92,7 @@ bool APPB::_FInitOS(void)
     // controllers aren't used (browsers can report phantom gamepad axes).
     ret = SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER | SDL_INIT_EVENTS);
     if (ret < 0)
-        fprintf(stderr, "[3dmm-web] SDL_Init failed: %s\n", SDL_GetError());
+        fprintf(stderr, "SDL_Init failed: %s\n", SDL_GetError());
 #else
     ret = SDL_Init(SDL_INIT_EVERYTHING);
 #endif
@@ -119,7 +119,7 @@ bool APPB::_FInitOS(void)
     Assert(wnd != pvNil, "no window returned from SDL_CreateWindow");
 #ifdef __EMSCRIPTEN__
     if (wnd == pvNil)
-        fprintf(stderr, "[3dmm-web] SDL_CreateWindow failed: %s\n", SDL_GetError());
+        fprintf(stderr, "SDL_CreateWindow failed: %s\n", SDL_GetError());
 #endif
     if (wnd == pvNil)
     {

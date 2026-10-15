@@ -4902,9 +4902,6 @@ bool KWA::FFindFile(PSTN pstnSrc, PFNI pfni)
     AssertPo(pstnSrc, 0);
     AssertPo(pfni, 0);
 
-#ifdef __EMSCRIPTEN__
-    fprintf(stderr, "[3dmm-web] KWA::FFindFile '%s'\n", pstnSrc->Psz());
-#endif
     return vptagm->FFindFile(vapp.SidProduct(), pstnSrc, pfni, FAskForCD());
 }
 

@@ -18,7 +18,7 @@ ASSERTNAME
 
 #ifdef __EMSCRIPTEN__
 #include <cstdio>
-#define WEB_LOG_FAIL(step) fprintf(stderr, "[3dmm-web] APPB::_FInit step failed: %s\n", step)
+#define WEB_LOG_FAIL(step) fprintf(stderr, "APPB::_FInit step failed: %s\n", step)
 #else
 #define WEB_LOG_FAIL(step)
 #endif
