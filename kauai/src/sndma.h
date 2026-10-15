@@ -9,6 +9,7 @@
 #define SNDMA_H
 
 #include <atomic>
+#include <vector>
 #include <miniaudio.h>
 
 // Manages a single instance of the miniaudio engine
@@ -33,6 +34,10 @@ class MiniaudioManager : public MiniaudioManager_PAR
     // since the last reset
     void GetMeter(float *pflPeak, uint64_t *pcframeAudible, uint64_t *pcframe, bool fReset);
 
+    // Loudness envelope (used by tests): the peak of every 20 ms of output, 0..255, since the last reset
+    // (at most the last minute)
+    void GetEnvelope(std::vector<uint8_t> *prgbEnv, bool fReset);
+
   protected:
     ma_engine _engine;
     bool _fInit;
@@ -43,6 +48,11 @@ class MiniaudioManager : public MiniaudioManager_PAR
     std::atomic<float> _flPeak{0};
     std::atomic<uint64_t> _cframeAudible{0};
     std::atomic<uint64_t> _cframe{0};
+
+    MUTX _mutxEnv;
+    std::vector<uint8_t> _rgbEnv;
+    float _flEnvPeak = 0;
+    uint32_t _cframeEnv = 0;
 
     static void _MeterProc(void *pvUser, float *prgflOut, ma_uint64 cframe);
 };

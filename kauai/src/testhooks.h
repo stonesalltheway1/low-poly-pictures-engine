@@ -36,6 +36,7 @@ void TestGetMouse(int32_t *pxpLogical, int32_t *pypLogical, bool *pfDown);
 void TestWarpVirtual(int xpWindow, int ypWindow); // used by APPB::PositionCurs while input override is active
 bool FTestKey(const char *pszKey, bool fDown);    // SDL key name, e.g. "Return", "Escape", "Left", "Z"
 void TestSetMods(uint32_t grfkmod);
+void TestTypeText(const char *pszUtf8); // text input (what typing produces), e.g. into a name field
 
 // Save the current screen (8-bit, with palette) as a BMP. Flushes pending drawing first.
 bool FTestDumpScreen(const char *pszPath);

@@ -190,6 +190,25 @@ bool FTestKey(const char *pszKey, bool fDown)
     return fTrue;
 }
 
+void TestTypeText(const char *pszUtf8)
+{
+    // One SDL_TEXTINPUT event per character, as typing produces
+    for (const char *pch = pszUtf8; *pch != 0;)
+    {
+        int cch = 1;
+        while ((pch[cch] & 0xC0) == 0x80)
+            cch++; // UTF-8 continuation bytes
+        SDL_Event evt;
+        ClearPb(&evt, SIZEOF(evt));
+        evt.type = SDL_TEXTINPUT;
+        evt.text.timestamp = SDL_GetTicks();
+        evt.text.windowID = SDL_GetWindowID(_PwndApp());
+        CopyPb(pch, evt.text.text, cch);
+        SDL_PushEvent(&evt);
+        pch += cch;
+    }
+}
+
 void TestSetMods(uint32_t grfkmod)
 {
     SDL_SetModState((SDL_Keymod)grfkmod);

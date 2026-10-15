@@ -23,10 +23,12 @@
                                balloon (any speech-bubble menu), playing (a movie is playing);
                                "!PLACE" waits until it is gone
       shot NAME                save the screen (8-bit BMP with palette)
-      state                    app/movie/actor state as JSON
+      state                    app/movie/actor state as JSON (audio: levels since the previous state,
+                               env20ms: loudness of every 20 ms, 0..99)
       open PATH                open a movie file in the studio ($APPDIR = folder of the app;
                                e.g. $APPDIR/Microsoft Kids/Users/Melanie/dialogue.3mm)
       scene N | frame N        jump to scene N (0-based) / frame N of the current scene
+      type TEXT                type text (e.g. into a name field)
       midiscan DIR             instruments used by all MIDI chunks in the chunky files under DIR (for the soundfont)
       release                  hand the mouse back to the real user
       echo TEXT
@@ -75,6 +77,7 @@ enum class SK
     Scene,
     Frame,
     MidiScan,
+    Type,
     Error
 };
 
@@ -256,6 +259,11 @@ void Parse(const std::string &text, Batch *pbatch)
             add(SK::Scene, n[0]);
         else if (cmd == "frame" && n.size() >= 1)
             add(SK::Frame, n[0]);
+        else if (cmd == "type" && !rest.empty())
+        {
+            add(SK::Type, 0, 0, rest);
+            add(SK::Wait, 100);
+        }
         else if (cmd == "midiscan" && !rest.empty())
             add(SK::MidiScan, 0, 0, rest);
         else if (cmd == "release")
@@ -461,6 +469,16 @@ std::string AudioJson(void)
         pmanager->GetMeter(&flPeak, &cframeAudible, &cframe, true);
     js << "{\"peak\":" << flPeak << ",\"audible_ms\":" << (rate ? cframeAudible * 1000 / rate : 0)
        << ",\"mixed_ms\":" << (rate ? cframe * 1000 / rate : 0) << ",\"rate\":" << rate;
+    if (pengine != pvNil)
+    {
+        // loudness of every 20 ms (0..99) since the previous state
+        std::vector<uint8_t> rgbEnv;
+        pmanager->GetEnvelope(&rgbEnv, true);
+        js << ",\"env20ms\":[";
+        for (size_t ib = 0; ib < rgbEnv.size(); ib++)
+            js << (ib ? "," : "") << (rgbEnv[ib] * 99 + 127) / 255;
+        js << "]";
+    }
 #ifdef KAUAI_MIDI_FLUIDSYNTH
     js << ",\"midi_ms\":" << (rate ? CframeMidiAudible(true) * 1000 / rate : 0);
 #endif
@@ -724,6 +742,9 @@ void RunStep(const Step &st, uint32_t ts)
         g_tsNext = ts + 300;
         break;
     }
+    case SK::Type:
+        TestTypeText(st.str.c_str());
+        break;
     case SK::MidiScan:
         g_cur.results.push_back("{\"midiscan\":" + MidiScanJson(ExpandPath(st.str)) + "}");
         break;
