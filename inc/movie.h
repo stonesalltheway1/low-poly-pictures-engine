@@ -739,6 +739,10 @@ class MVIE : public MVIE_PAR
     // Auto save stuff
     //
     bool FAutoSave(PFNI pfni = pvNil, bool fCleanRollCall = fFalse); // Save movie in temp file
+#ifdef __EMSCRIPTEN__
+    // Web: write the movie as it is now to pfni, without changing it (for recovery after a crash or reload)
+    bool FWriteRecoveryCopy(PFNI pfni);
+#endif
     bool FSaveTagSnd(TAG *ptag)
     {
         return TAGM::FSaveTag(ptag, _pcrfAutoSave, fTrue);

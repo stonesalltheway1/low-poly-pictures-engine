@@ -33,6 +33,9 @@ ASSERTNAME
 void LppTestInit(void);         // lpptest.cpp
 bool FLppTestDesktopMode(void); // lpptest.cpp
 #endif
+#ifdef __EMSCRIPTEN__
+void WebRecoveryInit(void); // webrecovery.cpp
+#endif
 
 // If the following value is defined, 3DMM displays the dlidDesktopResizing
 // and dlidDesktopResized dialogs before and immediately after res-switching.
@@ -320,6 +323,10 @@ bool APP::_FInit(uint32_t grfapp, uint32_t grfgob, int32_t ginDef)
     // Attach the Low Poly Pictures test driver (desktop: only when LPP_TEST_DIR is set)
     LppTestInit();
 #endif // KAUAI_SDL
+#ifdef __EMSCRIPTEN__
+    // Keep a recovery copy of a movie with unsaved changes (the page offers it after a crash or reload)
+    WebRecoveryInit();
+#endif
 
     if (!_FInitAcceleratorTable())
     {

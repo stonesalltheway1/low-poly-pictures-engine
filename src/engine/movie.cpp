@@ -30,6 +30,10 @@ Actors, Text boxes, etc.
 #ifdef KAUAI_SDL
 #include "testhooks.h"
 #endif
+#ifdef __EMSCRIPTEN__
+#include <filesystem>
+#include <string>
+#endif
 ASSERTNAME
 
 #define krScaleMouseRecord BR_SCALAR(0.20)
@@ -3005,6 +3009,44 @@ bool MVIE::FSave(int32_t cid)
     // Now take the default action.
     return MVIE_PAR::FSave(cid);
 }
+
+#ifdef __EMSCRIPTEN__
+/****************************************************
+ *
+ * Web: write the movie as it is now to pfni, for recovery after a crash
+ * or reload. Brings the temp file up to date (what switching scenes does)
+ * and copies it; the movie itself (file, dirty state, undo) is unchanged.
+ *
+ * Returns:
+ *  fFalse if there was a failure, else fTrue.
+ *
+ ****************************************************/
+bool MVIE::FWriteRecoveryCopy(PFNI pfni)
+{
+    AssertThis(0);
+    AssertPo(pfni, ffniFile);
+
+    FNI fniTemp;
+    STN stnSrc, stnDst;
+    bool fChanged = _fAutosaveDirty;
+    std::error_code ec;
+
+    if (_pcrfAutoSave == pvNil || !FAutoSave(pvNil, fFalse))
+        return fFalse;
+
+    pfni->GetStnPath(&stnDst);
+    if (!fChanged && std::filesystem::exists(stnDst.Psz(), ec))
+        return fTrue; // nothing new since the last copy
+
+    _pcrfAutoSave->Pcfl()->GetFni(&fniTemp);
+    fniTemp.GetStnPath(&stnSrc);
+    std::string stnNew = std::string(stnDst.Psz()) + ".new";
+    std::filesystem::copy_file(stnSrc.Psz(), stnNew, std::filesystem::copy_options::overwrite_existing, ec);
+    if (!ec)
+        std::filesystem::rename(stnNew, stnDst.Psz(), ec);
+    return !ec;
+}
+#endif // __EMSCRIPTEN__
 
 /****************************************************
  *
