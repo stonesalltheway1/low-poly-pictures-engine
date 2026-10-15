@@ -159,6 +159,10 @@ class MSMIX : public MSMIX_PAR
     void _Notify(void *pvData, PMDWS pmdws);
 
     uint32_t _LuThread(void);
+    uint32_t _DtsExpireSounds(void);
+#ifdef KAUAI_NO_THREADS
+    static void _PollProc(void *pvUser);
+#endif // KAUAI_NO_THREADS
 
   public:
     static PMSMIX PmsmixNew(void);

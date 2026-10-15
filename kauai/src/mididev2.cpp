@@ -534,6 +534,10 @@ MSMIX::~MSMIX(void)
 {
     Assert(pvNil == _pmisi || !_pmisi->FActive(), "MISI still active!");
 
+#ifdef KAUAI_NO_THREADS
+    RemovePollProc(_PollProc, this);
+#endif // KAUAI_NO_THREADS
+
     if (_thrdCleanup.joinable())
     {
         // tell the thread to end and wait for it to finish
@@ -606,8 +610,13 @@ bool MSMIX::_FInit(void)
         return fFalse;
     }
 
+#ifdef KAUAI_NO_THREADS
+    // no threads: expire sounds from the main loop
+    AddPollProc(_PollProc, this);
+#else
     // create the thread
     _thrdCleanup = std::thread([this] { return this->_LuThread(); });
+#endif // KAUAI_NO_THREADS
 
     return fTrue;
 }
@@ -678,6 +687,10 @@ void MSMIX::_StopStream(void)
 
     _pmisi->StopPlaying();
 
+#ifdef KAUAI_NO_THREADS
+    // Single-threaded MISIs return the buffers before StopPlaying returns
+    Assert(_cpvOut == 0, "MISI still has buffers after StopPlaying");
+#else
     // Wait for the buffers to be returned
     _fWaiting = fTrue;
     _mutx.Leave();
@@ -687,6 +700,7 @@ void MSMIX::_StopStream(void)
 
     _mutx.Enter();
     _fWaiting = fFalse;
+#endif // KAUAI_NO_THREADS
 }
 
 /***************************************************************************
@@ -1155,10 +1169,6 @@ void MSMIX::_Notify(void *pvData, PMDWS pmdws)
 uint32_t MSMIX::_LuThread(void)
 {
     AssertThis(0);
-    uint32_t tsCur;
-    int32_t imsos;
-    MSOS msos;
-    int32_t cactSkip;
     uint32_t dtsNextStop = kluMax;
 
     for (;;)
@@ -1168,54 +1178,84 @@ uint32_t MSMIX::_LuThread(void)
         if (_fDone)
             return 0;
 
-        _mutx.Enter();
-
-        if (_fWaiting)
-        {
-            // we're waiting for buffers to be returned, so don't touch
-            // anything!
-            dtsNextStop = 1;
-        }
-        else
-        {
-            // See if any sounds have expired...
-            tsCur = TsCurrentSystem();
-            dtsNextStop = kluMax;
-            for (imsos = _pglmsos->IvMac(); imsos-- > 0;)
-            {
-                if (imsos == 0 && _fPlaying)
-                    break;
-                _pglmsos->Get(imsos, &msos);
-
-                cactSkip = (tsCur - msos.tsStart) / msos.dts;
-                if (cactSkip > 0)
-                {
-                    uint32_t dtsSeek;
-
-                    if (msos.cactPlay > 0 && (msos.cactPlay -= cactSkip) <= 0)
-                    {
-                        // this sound is done
-                        _pglmsos->Delete(imsos);
-                        _mutx.Leave();
-
-                        // do the notify
-                        msos.pmsque->Notify(msos.pmdws);
-
-                        _mutx.Enter();
-                        dtsNextStop = 0;
-                        break;
-                    }
-
-                    // adjust the values in the MSOS
-                    dtsSeek = (tsCur - msos.tsStart) % msos.dts;
-                    msos.tsStart = tsCur - dtsSeek;
-                    _pglmsos->Put(imsos, &msos);
-                }
-
-                dtsNextStop = LuMin(dtsNextStop, msos.dts - (tsCur - msos.tsStart));
-            }
-        }
-
-        _mutx.Leave();
+        dtsNextStop = _DtsExpireSounds();
     }
 }
+
+/***************************************************************************
+    AT: Nuke any expired sounds. Returns how long until the next sound is
+    due to expire.
+***************************************************************************/
+uint32_t MSMIX::_DtsExpireSounds(void)
+{
+    AssertThis(0);
+    uint32_t tsCur;
+    int32_t imsos;
+    MSOS msos;
+    int32_t cactSkip;
+    uint32_t dtsNextStop = kluMax;
+
+    _mutx.Enter();
+
+    if (_fWaiting)
+    {
+        // we're waiting for buffers to be returned, so don't touch
+        // anything!
+        dtsNextStop = 1;
+    }
+    else
+    {
+        // See if any sounds have expired...
+        tsCur = TsCurrentSystem();
+        for (imsos = _pglmsos->IvMac(); imsos-- > 0;)
+        {
+            if (imsos == 0 && _fPlaying)
+                break;
+            _pglmsos->Get(imsos, &msos);
+
+            cactSkip = (tsCur - msos.tsStart) / msos.dts;
+            if (cactSkip > 0)
+            {
+                uint32_t dtsSeek;
+
+                if (msos.cactPlay > 0 && (msos.cactPlay -= cactSkip) <= 0)
+                {
+                    // this sound is done
+                    _pglmsos->Delete(imsos);
+                    _mutx.Leave();
+
+                    // do the notify
+                    msos.pmsque->Notify(msos.pmdws);
+
+                    _mutx.Enter();
+                    dtsNextStop = 0;
+                    break;
+                }
+
+                // adjust the values in the MSOS
+                dtsSeek = (tsCur - msos.tsStart) % msos.dts;
+                msos.tsStart = tsCur - dtsSeek;
+                _pglmsos->Put(imsos, &msos);
+            }
+
+            dtsNextStop = LuMin(dtsNextStop, msos.dts - (tsCur - msos.tsStart));
+        }
+    }
+
+    _mutx.Leave();
+    return dtsNextStop;
+}
+
+#ifdef KAUAI_NO_THREADS
+/***************************************************************************
+    Main loop poll proc for single-threaded builds: does the aux thread's
+    work.
+***************************************************************************/
+void MSMIX::_PollProc(void *pvUser)
+{
+    PMSMIX pmsmix = (PMSMIX)pvUser;
+    AssertPo(pmsmix, 0);
+
+    pmsmix->_DtsExpireSounds();
+}
+#endif // KAUAI_NO_THREADS

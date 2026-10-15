@@ -80,6 +80,36 @@ class FMS : public FMS_PAR
 
     void _ReleaseBuffers(void);
 
+#ifdef KAUAI_NO_THREADS
+    // Single-threaded builds: FluidSynth renders inside the audio callback, from a miniaudio data source,
+    // and plays each event at its exact sample position. Finished buffers are returned from the main loop.
+    struct DSRC
+    {
+        ma_data_source_base base;
+        PFMS pfms;
+    };
+    DSRC _dsrc;
+    ma_sound _sound;
+    bool _fSound;
+
+    uint32_t _cframeRate;   // output sample rate
+    uint64_t _cframeTime;   // synth clock: frames rendered so far
+    uint64_t _msNext;       // synth clock time of the next event, in milliseconds
+    bool _fBufferActive;    // whether _pmev/_pmevLim point into a playing buffer
+    int32_t _cmsbDone;      // buffers at the front of _pglmsb that finished playing, not yet returned
+    int32_t _cframeIdle;    // frames rendered since the synth last had work to do
+
+    void _StartBuffer(void);
+    void _PlayDueEvents(void);
+    void _Render(float *prgfl, uint32_t cframe);
+
+    static ma_result _DsrcRead(ma_data_source *pds, void *pvOut, ma_uint64 cframe, ma_uint64 *pcframeRead);
+    static ma_result _DsrcSeek(ma_data_source *pds, ma_uint64 iframe);
+    static ma_result _DsrcGetDataFormat(ma_data_source *pds, ma_format *pformat, ma_uint32 *pcchannel,
+                                        ma_uint32 *pcframeRate, ma_channel *prgchannel, size_t cchannelMap);
+    static void _PollProc(void *pvUser);
+#endif // KAUAI_NO_THREADS
+
   public:
     static PFMS PfmsNew(PFNMIDI pfn, uintptr_t luUser);
     ~FMS(void);
@@ -93,5 +123,8 @@ class FMS : public FMS_PAR
     virtual bool FQueueBuffer(void *pvData, int32_t cb, int32_t ibStart, int32_t cactPlay, uintptr_t luData) override;
     virtual void StopPlaying(void) override;
 };
+
+// Number of MIDI frames rendered with sounding notes since the last reset (for tests)
+uint64_t CframeMidiAudible(bool fReset);
 
 #endif //! MIDISTREAMFLUIDSYNTH_H

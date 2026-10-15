@@ -606,6 +606,11 @@ void APPB::TopOfLoop(void)
 
     // take down the wait cursor
     EndLongOp(fTrue);
+
+#ifdef KAUAI_NO_THREADS
+    // background work that runs on helper threads in other builds
+    RunPollProcs();
+#endif // KAUAI_NO_THREADS
 }
 
 /***************************************************************************

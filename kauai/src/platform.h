@@ -9,6 +9,7 @@
 #include <mutex>
 #include <condition_variable>
 #include <chrono>
+#include <vector>
 
 /****************************************
     Mutex (critical section) object
@@ -78,6 +79,45 @@ class Signal
     std::condition_variable _cv;
     bool _fSignaled = false;
 };
+
+#ifdef KAUAI_NO_THREADS
+/****************************************
+    Single-threaded builds (WebAssembly): background work that other
+    builds do on helper threads registers a poll proc instead. The app
+    runs all poll procs at the top of its main loop.
+****************************************/
+typedef void (*PFNPOLL)(void *pvUser);
+
+struct POLLPROC
+{
+    PFNPOLL pfn;
+    void *pvUser;
+};
+
+inline std::vector<POLLPROC> vrgpollproc;
+
+inline void AddPollProc(PFNPOLL pfn, void *pvUser)
+{
+    vrgpollproc.push_back({pfn, pvUser});
+}
+
+inline void RemovePollProc(PFNPOLL pfn, void *pvUser)
+{
+    for (size_t ipp = vrgpollproc.size(); ipp-- > 0;)
+    {
+        if (vrgpollproc[ipp].pfn == pfn && vrgpollproc[ipp].pvUser == pvUser)
+            vrgpollproc.erase(vrgpollproc.begin() + ipp);
+    }
+}
+
+inline void RunPollProcs(void)
+{
+    // Copy first: a poll proc may add or remove poll procs
+    std::vector<POLLPROC> rgpollproc = vrgpollproc;
+    for (const POLLPROC &pollproc : rgpollproc)
+        pollproc.pfn(pollproc.pvUser);
+}
+#endif // KAUAI_NO_THREADS
 
 /***************************************************************************
     Universal scalable application clock and other time stuff
