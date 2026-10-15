@@ -177,12 +177,13 @@ bool MiniaudioDevice::_FInit()
         return fFalse;
     }
 
+    // Take the reference before anything can fail: the destructor releases it
+    _pmanager->AddRef();
+
     if (_pmanager->Pengine() == pvNil)
     {
         return fFalse;
     }
-
-    _pmanager->AddRef();
 
     result = ma_sound_group_init(_pmanager->Pengine(), 0, pvNil, &_soundgroup);
     AssertMaSuccess(result, "Failed to initialise sound group");
