@@ -447,6 +447,11 @@ bool APPB::_FTranslateKeyEvt(PEVT pevt, PCMD_KEY pcmd)
         pcmd->vk = pevt->key.keysym.sym;
         pcmd->ch = ChLit(0);
 
+        // SDL sends no text input for Enter, but text boxes insert a new line for the character (Windows sends a
+        // WM_CHAR carriage return), so pass it along as one
+        if (pevt->key.keysym.sym == SDLK_RETURN || pevt->key.keysym.sym == SDLK_KP_ENTER)
+            pcmd->ch = kchReturn;
+
         grfcust &= ~kgrfcustUser;
         if (pevt->key.keysym.mod & SDL_Keymod::KMOD_CTRL)
             grfcust |= fcustCmd;
