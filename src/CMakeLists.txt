@@ -276,8 +276,13 @@ if (EMSCRIPTEN)
         target_link_options(studio PRIVATE "SHELL:--preload-file \"${3DMM_WEB_FONTS_DIR}@/app/fonts\"")
     endif()
     if (3DMM_SOUNDFONT_PATH)
-        # MIDI soundfont, found by FMS in the resources directory (/app)
-        target_link_options(studio PRIVATE "SHELL:--preload-file \"${3DMM_SOUNDFONT_PATH}@/app/soundfont.sf2\"")
+        # MIDI soundfont, found by FMS in the resources directory (/app/soundfont.sf3 or .sf2)
+        get_filename_component(web_soundfont_ext "${3DMM_SOUNDFONT_PATH}" LAST_EXT)
+        string(TOLOWER "${web_soundfont_ext}" web_soundfont_ext)
+        target_link_options(studio PRIVATE
+            "SHELL:--preload-file \"${3DMM_SOUNDFONT_PATH}@/app/soundfont${web_soundfont_ext}\""
+        )
+        set_property(TARGET studio APPEND PROPERTY LINK_DEPENDS "${3DMM_SOUNDFONT_PATH}")
     endif()
 endif()
 

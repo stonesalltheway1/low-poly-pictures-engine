@@ -222,11 +222,7 @@ bool FMS::_FInit(void)
     if (ret == FLUID_FAILED)
     {
         FNI fniExe;
-#ifdef __EMSCRIPTEN__
-        STN stnFileName = PszLit("soundfont.sf2");
-#else
         STN stnFileName = PszLit("soundfont.sf3");
-#endif
         STN stnSoundFontPath;
 
         // Try app resources directory
@@ -237,7 +233,7 @@ bool FMS::_FInit(void)
         ret = fluid_synth_sfload(_flsynth, stnSoundFontPath.Psz(), true);
         if (ret == FLUID_FAILED)
         {
-            // Builds without libsndfile can't read compressed SF3 soundfonts and use an SF2 instead
+            // ...or an uncompressed SF2
             stnFileName = PszLit("soundfont.sf2");
             fniExe.FSetLeaf(&stnFileName);
             fniExe.GetStnPath(&stnSoundFontPath);
