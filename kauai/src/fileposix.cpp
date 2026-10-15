@@ -23,8 +23,16 @@ const uint32_t kfpError = 0xFFFFFFFF;
 kpriv FILE *_HfileOpen(PSZ psz, uint32_t grffil)
 {
     const char *mode = (grffil & ffilWriteEnable) ? "wb+" : "rb";
+    FILE *fp = std::fopen(psz, mode);
 
-    return std::fopen(psz, mode);
+#ifdef __EMSCRIPTEN__
+    // The page reads saved files straight from the virtual filesystem (browser storage, downloads) while the
+    // app keeps them open, so writes must not wait in a stdio buffer
+    if (fp != NULL && (grffil & ffilWriteEnable))
+        std::setvbuf(fp, NULL, _IONBF, 0);
+#endif // __EMSCRIPTEN__
+
+    return fp;
 }
 
 /***************************************************************************
