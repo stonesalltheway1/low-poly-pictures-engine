@@ -86,8 +86,10 @@ bool APPB::_FInitOS(void)
 
     // Initialize SDL
 #ifdef __EMSCRIPTEN__
-    // Not every subsystem exists in the browser (e.g. haptic), and SDL_INIT_EVERYTHING fails if any is missing
-    ret = SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_TIMER | SDL_INIT_EVENTS | SDL_INIT_GAMECONTROLLER);
+    // Not every subsystem exists in the browser (e.g. haptic, or audio when Web Audio is missing), and
+    // SDL_INIT_EVERYTHING fails if any is missing. Sound goes through miniaudio, not SDL audio, and game
+    // controllers aren't used (browsers can report phantom gamepad axes).
+    ret = SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER | SDL_INIT_EVENTS);
     if (ret < 0)
         fprintf(stderr, "[3dmm-web] SDL_Init failed: %s\n", SDL_GetError());
 #else
