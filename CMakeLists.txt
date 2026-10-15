@@ -112,6 +112,13 @@ elseif("${3DMM_GUI}" STREQUAL "SDL")
     endif()
 
     if (EMSCRIPTEN)
+        # Single-threaded build: work done on helper threads elsewhere (MIDI) is polled from the main loop
+        add_compile_definitions(KAUAI_NO_THREADS)
+
+        # MIDI: FluidSynth built from source (no threads), with an SF2 soundfont
+        include(FetchFluidSynthSource)
+        include(FetchSoundfontWeb)
+
         # Emscripten ships SDL2 and SDL2_ttf as built-in ports
         add_library(SDL2::SDL2 INTERFACE IMPORTED)
         target_compile_options(SDL2::SDL2 INTERFACE "-sUSE_SDL=2")
