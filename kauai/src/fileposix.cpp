@@ -24,9 +24,11 @@ const uint32_t kfpError = 0xFFFFFFFF;
     Open or create the file by calling CreateFile.  Returns hBadWin on
     failure.
 ***************************************************************************/
-kpriv FILE *_HfileOpen(PSZ psz, uint32_t grffil)
+kpriv FILE *_HfileOpen(PSZ psz, bool fCreate, uint32_t grffil)
 {
-    const char *mode = (grffil & ffilWriteEnable) ? "wb+" : "rb";
+    // Like CREATE_ALWAYS / OPEN_EXISTING in filewin.cpp: only a new file starts empty. ("wb+" for every
+    // write-enabled open erased existing files opened for writing, e.g. a chunky file opened with fcflWriteEnable.)
+    const char *mode = fCreate ? "wb+" : ((grffil & ffilWriteEnable) ? "rb+" : "rb");
     FILE *fp = std::fopen(psz, mode);
 
 #ifdef __EMSCRIPTEN__
@@ -91,14 +93,14 @@ bool FIL::_FOpen(bool fCreate, uint32_t grffil)
         grffil |= _grffil & kgrffilPerm;
     }
 
-    _fp = _HfileOpen(_fni._stnFile.Psz(), grffil);
+    _fp = _HfileOpen(_fni._stnFile.Psz(), fCreate, grffil);
 
     if (NULL == _fp)
     {
         // if it was open, re-open it with old permissions
         if (_fOpen)
         {
-            _fp = _HfileOpen(_fni._stnFile.Psz(), _grffil);
+            _fp = _HfileOpen(_fni._stnFile.Psz(), fFalse, _grffil);
             if (NULL != _fp)
                 goto LRet;
         }
