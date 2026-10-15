@@ -879,7 +879,14 @@ bool TAGM::FCacheTagToHD(PTAG ptag, bool fCacheChildChunks)
     if (!_FDetermineIfSourceHD(ptag->sid, &fSourceIsOnHD))
         goto LFail;
     if (fSourceIsOnHD)
+    {
+#ifdef __EMSCRIPTEN__
+        // Web: the "HD" is the web server. Start downloading the chunks now, like the CD version copied them to the
+        // HD cache, so the movie doesn't stop to wait for them later.
+        _PrefetchTag(ptag, fCacheChildChunks);
+#endif
         return fTrue;
+    }
 
     pcrmSource = _PcrmSourceGet(ptag->sid);
     if (pvNil == pcrmSource)
@@ -919,6 +926,47 @@ LFail:
     PushErc(ercSocCantCacheTag);
     return fFalse;
 }
+
+#ifdef __EMSCRIPTEN__
+/***************************************************************************
+    Web: ask for the chunk specified by the tag (and its children) to be
+    downloaded in the background. Never waits and never fails.
+***************************************************************************/
+void TAGM::_PrefetchTag(PTAG ptag, bool fCacheChildChunks)
+{
+    AssertThis(0);
+    AssertVarMem(ptag);
+
+    PCRM pcrmSource;
+    PCRF pcrfSource;
+    PCFL pcfl;
+    FLO flo;
+
+    pcrmSource = _PcrmSourceGet(ptag->sid);
+    if (pvNil == pcrmSource)
+        return;
+    pcrfSource = pcrmSource->PcrfFindChunk(ptag->ctg, ptag->cno);
+    if (pvNil == pcrfSource)
+        return;
+    pcfl = pcrfSource->Pcfl();
+
+    if (fCacheChildChunks)
+    {
+        CGE cge;
+        KID kid;
+        uint32_t grfcgeOut;
+
+        cge.Init(pcfl, ptag->ctg, ptag->cno);
+        while (cge.FNextKid(&kid, pvNil, &grfcgeOut, 0))
+        {
+            if ((grfcgeOut & fcgePre) && pcfl->FFindFlo(kid.cki.ctg, kid.cki.cno, &flo))
+                flo.pfil->Prefetch(flo.fp, flo.cb);
+        }
+    }
+    else if (pcfl->FFindFlo(ptag->ctg, ptag->cno, &flo))
+        flo.pfil->Prefetch(flo.fp, flo.cb);
+}
+#endif // __EMSCRIPTEN__
 
 /***************************************************************************
     Resolve the TAG to a BACO.  Only use HD cache files, unless fUseCD is

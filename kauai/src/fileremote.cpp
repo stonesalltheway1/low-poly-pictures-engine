@@ -79,7 +79,18 @@ EM_ASYNC_JS(int, LppFetchRangeJs, (const char *pszRel, double fp, int cb, uint8_
     }
 });
 
+// Ask the page to start downloading a range in the background (Module.lppPrefetchRange, if the page has one)
+EM_JS(void, LppPrefetchJs, (const char *pszRel, double fp, int cb), {
+    if (typeof Module.lppPrefetchRange === 'function')
+        Module.lppPrefetchRange(UTF8ToString(pszRel), fp, cb);
+});
 
+// Wait until the page's requested background downloads finish (Module.lppPrefetchIdle), at most 30 s
+EM_ASYNC_JS(void, LppWaitPrefetchJs, (void), {
+    if (typeof Module.lppPrefetchIdle !== 'function')
+        return;
+    await Promise.race([ Module.lppPrefetchIdle(), new Promise(function(resolve) { setTimeout(resolve, 30000); }) ]);
+});
 
 bool FInitRemoteFiles(void)
 {
@@ -205,8 +216,39 @@ bool FReadRemoteFile(int32_t irf, void *pv, int32_t cb, int32_t fp)
     return true;
 }
 
+void PrefetchRemoteFile(int32_t irf, int32_t fp, int32_t cb)
+{
+    if (irf <= 0 || irf > (int32_t)g_rgrf.size() || cb <= 0 || fp < 0)
+        return;
+    RF *prf = &g_rgrf[irf - 1];
+    if (fp >= prf->cb)
+        return;
+    if (cb > prf->cb - fp)
+        cb = prf->cb - fp;
+
+    // Runs of blocks that aren't here yet
+    int32_t iblkLim = (fp + cb + kcbBlock - 1) / kcbBlock;
+    for (int32_t iblk = fp / kcbBlock; iblk < iblkLim;)
+    {
+        if (prf->mpiblkpb.count(iblk) != 0)
+        {
+            iblk++;
+            continue;
+        }
+        int32_t iblkRunLim = iblk + 1;
+        while (iblkRunLim < iblkLim && iblkRunLim - iblk < kcblkFetchMax && prf->mpiblkpb.count(iblkRunLim) == 0)
+            iblkRunLim++;
+        int32_t fpMin = iblk * kcbBlock;
+        int32_t fpLim = iblkRunLim * kcbBlock < prf->cb ? iblkRunLim * kcbBlock : prf->cb;
+        LppPrefetchJs(prf->stnRel.c_str(), (double)fpMin, fpLim - fpMin);
+        iblk = iblkRunLim;
+    }
 }
 
+void WaitForRemotePrefetches(void)
+{
+    if (LppCanSuspendJs())
+        LppWaitPrefetchJs();
 }
 
 void GetRemoteFileStats(uint64_t *pcfetch, uint64_t *pcbFetched)

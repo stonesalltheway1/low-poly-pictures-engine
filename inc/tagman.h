@@ -120,6 +120,9 @@ class TAGM : public TAGM_PAR
     bool _FEnsureFniCD(int32_t sid, PFNI pfniCD, PSTN pstn = pvNil);
     bool _FFindFniCD(int32_t sid, PFNI pfniCD, bool *pfFniChanged);
     bool _FDetermineIfSourceHD(int32_t sid, bool *pfSourceIsOnHD);
+#ifdef __EMSCRIPTEN__
+    void _PrefetchTag(PTAG ptag, bool fCacheChildChunks);
+#endif
     bool _FDetermineIfContentOnFni(PFNI pfni, bool *pfContentOnFni);
 
     bool _FGetFniHD(int32_t sid, PFNI pfniHD);

@@ -13,6 +13,9 @@
 
 ***************************************************************************/
 #include "soc.h"
+#ifdef __EMSCRIPTEN__
+#include "fileremote.h"
+#endif
 ASSERTNAME
 
 RTCLASS(TAGL)
@@ -278,6 +281,10 @@ bool TAGL::FCacheTags(void)
                 return fFalse;
         }
     }
+#ifdef __EMSCRIPTEN__
+    // Web: FCacheTagToHD started downloading everything; let it arrive before the movie plays
+    WaitForRemotePrefetches();
+#endif
     return fTrue;
 }
 

@@ -32,6 +32,13 @@ int32_t CbRemoteFile(int32_t irf);
 // right now (e.g. inside the audio callback).
 bool FReadRemoteFile(int32_t irf, void *pv, int32_t cb, int32_t fp);
 
+// Hint that [fp, fp + cb) will be read soon: the page starts downloading it in the background (no waiting)
+void PrefetchRemoteFile(int32_t irf, int32_t fp, int32_t cb);
+
+// Wait (suspending the app) until the background downloads started by PrefetchRemoteFile are done, at most
+// about 30 seconds. Like the CD version copying a movie's content to the hard disk before playing it.
+void WaitForRemotePrefetches(void);
+
 // Fetch statistics (for tests): number of requests and bytes downloaded since startup
 void GetRemoteFileStats(uint64_t *pcfetch, uint64_t *pcbFetched);
 

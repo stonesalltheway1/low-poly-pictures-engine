@@ -170,6 +170,10 @@ class FIL : public FIL_PAR
     bool FRename(FNI *pfni);
     bool FSetFni(FNI *pfni);
     void Flush(void);
+#ifdef __EMSCRIPTEN__
+    // Hint that a range will be read soon (remote files start downloading it; see fileremote.h)
+    void Prefetch(FP fp, int32_t cb);
+#endif
 };
 
 /****************************************

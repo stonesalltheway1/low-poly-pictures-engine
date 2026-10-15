@@ -314,6 +314,24 @@ LRet:
     return fRet;
 }
 
+#ifdef __EMSCRIPTEN__
+/***************************************************************************
+    Hint that a range will be read soon. Remote files start downloading it
+    in the background; normal files ignore it.
+***************************************************************************/
+void FIL::Prefetch(FP fp, int32_t cb)
+{
+    AssertThis(0);
+
+    _mutx.Enter();
+    if (_irf == 0 && !_fOpen)
+        _irf = IrfFromPath(_fni._stnFile.Psz());
+    if (_irf != 0)
+        PrefetchRemoteFile(_irf, fp, cb);
+    _mutx.Leave();
+}
+#endif // __EMSCRIPTEN__
+
 /***************************************************************************
     Write a block to the file.
 ***************************************************************************/
