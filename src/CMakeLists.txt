@@ -242,6 +242,9 @@ if (EMSCRIPTEN)
         "-sEXPORTED_RUNTIME_METHODS=ccall,cwrap,UTF8ToString,FS,callMain,addRunDependency,removeRunDependency"
         "-sDEFAULT_LIBRARY_FUNCS_TO_INCLUDE=$stringToNewUTF8"
         "-lidbfs.js"
+        # Keep the preloaded files (fonts, soundfont: ~10 MB) in IndexedDB, keyed by a hash of their contents, so
+        # return visits don't download them again (browsers with small or in-memory HTTP caches don't keep them)
+        "--use-preload-cache"
     )
     set(3DMM_WEB_SHELL_FILE "" CACHE FILEPATH "HTML page template for the web build (default: Emscripten's)")
     if (3DMM_WEB_SHELL_FILE)
