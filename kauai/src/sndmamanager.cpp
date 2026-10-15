@@ -11,6 +11,9 @@ ASSERTNAME
 
 #include "sndma.h"
 #include "sndmapri.h"
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+#endif
 
 RTCLASS(MiniaudioManager)
 
@@ -24,9 +27,50 @@ MiniaudioManager::MiniaudioManager()
 MiniaudioManager::~MiniaudioManager()
 {
     ma_engine_stop(&_engine);
+    if (_fGroups)
+    {
+        for (int32_t mag = 0; mag < magLim; mag++)
+            ma_sound_group_uninit(&_rggroup[mag]);
+        _fGroups = false;
+    }
     ma_engine_uninit(&_engine);
     _fInit = fFalse;
 }
+
+/***************************************************************************
+    Category group (music or sounds) for new sounds, or pvNil
+***************************************************************************/
+ma_sound_group *MiniaudioManager::Pgroup(int32_t mag)
+{
+    // (the groups exist once Pengine() has created the engine; callers get the engine first)
+    if (!FIn(mag, 0, magLim) || !_fGroups)
+        return pvNil;
+    return &_rggroup[mag];
+}
+
+/***************************************************************************
+    Set a category's volume (0..1, on top of the app's own volume)
+***************************************************************************/
+void MiniaudioManager::SetGroupVolume(int32_t mag, float flVolume)
+{
+    if (!FIn(mag, 0, magLim))
+        return;
+    if (flVolume < 0)
+        flVolume = 0;
+    if (flVolume > 1)
+        flVolume = 1;
+    _rgflGroupVolume[mag] = flVolume;
+    if (_fGroups)
+        ma_sound_group_set_volume(&_rggroup[mag], flVolume);
+}
+
+#ifdef __EMSCRIPTEN__
+// For the page: music and sounds (voices, effects) volume, 0..1 (mag: 0 music, 1 sounds)
+extern "C" EMSCRIPTEN_KEEPALIVE void lpp_set_volume(int mag, float flVolume)
+{
+    MiniaudioManager::Pmanager()->SetGroupVolume(mag, flVolume);
+}
+#endif // __EMSCRIPTEN__
 
 ma_engine *MiniaudioManager::Pengine()
 {
@@ -50,6 +94,21 @@ ma_engine *MiniaudioManager::Pengine()
         if (result == MA_SUCCESS)
         {
             _fInit = fTrue;
+
+            // Category groups (music, sounds); without them sounds attach to the engine directly
+            int32_t mag;
+            for (mag = 0; mag < magLim; mag++)
+            {
+                if (ma_sound_group_init(&_engine, 0, pvNil, &_rggroup[mag]) != MA_SUCCESS)
+                    break;
+                ma_sound_group_set_volume(&_rggroup[mag], _rgflGroupVolume[mag]);
+            }
+            _fGroups = (mag == magLim);
+            if (!_fGroups)
+            {
+                while (mag-- > 0)
+                    ma_sound_group_uninit(&_rggroup[mag]);
+            }
         }
         else
         {

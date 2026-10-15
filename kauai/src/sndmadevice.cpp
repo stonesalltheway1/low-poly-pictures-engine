@@ -185,7 +185,8 @@ bool MiniaudioDevice::_FInit()
         return fFalse;
     }
 
-    result = ma_sound_group_init(_pmanager->Pengine(), 0, pvNil, &_soundgroup);
+    // Voices and effects play through the "sounds" category group (its volume can be set separately from music)
+    result = ma_sound_group_init(_pmanager->Pengine(), 0, _pmanager->Pgroup(MiniaudioManager::magSounds), &_soundgroup);
     AssertMaSuccess(result, "Failed to initialise sound group");
     if (result != MA_SUCCESS)
     {

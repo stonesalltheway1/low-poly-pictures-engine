@@ -284,7 +284,8 @@ bool FMS::_FInit(void)
             goto LFail;
         }
         result = ma_sound_init_from_data_source(pengine, &_dsrc.base,
-                                                MA_SOUND_FLAG_NO_SPATIALIZATION | MA_SOUND_FLAG_NO_PITCH, pvNil,
+                                                MA_SOUND_FLAG_NO_SPATIALIZATION | MA_SOUND_FLAG_NO_PITCH,
+                                                MiniaudioManager::Pmanager()->Pgroup(MiniaudioManager::magMusic),
                                                 &_sound);
         if (result != MA_SUCCESS)
         {

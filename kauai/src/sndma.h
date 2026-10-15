@@ -38,10 +38,24 @@ class MiniaudioManager : public MiniaudioManager_PAR
     // (at most the last minute)
     void GetEnvelope(std::vector<uint8_t> *prgbEnv, bool fReset);
 
+    // Category groups: music (MIDI) and sounds (voices, effects) play through these, so a front end can set
+    // their volumes separately, on top of the app's own volume. Pgroup returns pvNil without an audio engine.
+    enum
+    {
+        magMusic,
+        magSounds,
+        magLim
+    };
+    ma_sound_group *Pgroup(int32_t mag);
+    void SetGroupVolume(int32_t mag, float flVolume);
+
   protected:
     ma_engine _engine;
     bool _fInit;
     bool _fInitFailed;
+    ma_sound_group _rggroup[magLim];
+    bool _fGroups = false;
+    float _rgflGroupVolume[magLim] = {1.0f, 1.0f};
 
     MUTX _mutxInit;
 
