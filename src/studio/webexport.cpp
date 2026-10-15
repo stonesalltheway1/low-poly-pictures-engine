@@ -113,3 +113,70 @@ extern "C" EMSCRIPTEN_KEEPALIVE int lpp_movie_playing(void)
     PMVIE pmvie = PmvieCur();
     return (pmvie != pvNil && pmvie->FPlaying()) ? 1 : 0;
 }
+
+// The page sizes the canvas's pixels to its size on screen (times the device pixel ratio). The app keeps its
+// 640x480 logical size; GPT::Flip scales to the window ("sharp bilinear"), and mouse input maps back to 640x480.
+// The page may call this while the app is paused in an Asyncify sleep, and presenting a frame sleeps too (SDL's
+// swap yields to the browser): so only record the size here and apply it from the app's own loop.
+namespace
+{
+int g_dxpDisplayWant = 0, g_dypDisplayWant = 0;
+bool g_fDisplayPoll = false;
+
+void PollDisplaySize(void *pvUser)
+{
+    SDL_Window *pwnd = (SDL_Window *)vwig.hwndApp;
+    int dxpCur = 0, dypCur = 0;
+    if (pwnd == pvNil || g_dxpDisplayWant == 0)
+        return;
+    SDL_GetWindowSize(pwnd, &dxpCur, &dypCur);
+    if (dxpCur != g_dxpDisplayWant || dypCur != g_dypDisplayWant)
+    {
+        SDL_SetWindowSize(pwnd, g_dxpDisplayWant, g_dypDisplayWant);
+        GPT::Flush(); // resizing clears the canvas: present the current frame again
+    }
+}
+} // namespace
+
+extern "C" EMSCRIPTEN_KEEPALIVE void lpp_set_display_size(int dxp, int dyp)
+{
+    if (dxp < 64 || dyp < 48)
+        return;
+    g_dxpDisplayWant = dxp;
+    g_dypDisplayWant = dyp;
+    if (!g_fDisplayPoll)
+    {
+        AddPollProc(PollDisplaySize, pvNil);
+        g_fDisplayPoll = true;
+    }
+}
+
+// The current 256-colour palette as 1536 hex digits (rrggbb per entry), e.g. for GIF export (the movie's own
+// colours, no quantising). The string stays valid until the next call.
+extern "C" EMSCRIPTEN_KEEPALIVE const char *lpp_palette(void)
+{
+    static char s_szHex[256 * 6 + 1];
+    static const char kszDigits[] = "0123456789abcdef";
+    uint8_t rgb[256 * 3];
+    ClearPb(rgb, SIZEOF(rgb));
+    PGL pglclr = GPT::PglclrGetPalette();
+    if (pglclr != pvNil)
+    {
+        for (int32_t i = 0; i < pglclr->IvMac() && i < 256; i++)
+        {
+            CLR clr;
+            pglclr->Get(i, &clr);
+            rgb[3 * i] = clr.bRed;
+            rgb[3 * i + 1] = clr.bGreen;
+            rgb[3 * i + 2] = clr.bBlue;
+        }
+        ReleasePpo(&pglclr);
+    }
+    for (int32_t ib = 0; ib < 256 * 3; ib++)
+    {
+        s_szHex[2 * ib] = kszDigits[rgb[ib] >> 4];
+        s_szHex[2 * ib + 1] = kszDigits[rgb[ib] & 15];
+    }
+    s_szHex[256 * 6] = 0;
+    return s_szHex;
+}
