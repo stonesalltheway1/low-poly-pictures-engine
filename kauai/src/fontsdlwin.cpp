@@ -121,6 +121,48 @@ bool NTL::_FLoadFontTable()
         goto LFail;
     }
 
+    // Test runs (LPP_TEST_FONT_DIR, set by the Low Poly Pictures test runner): use the web build's bundled
+    // substitute instead of the system's Comic Sans, so desktop and browser screenshots can match exactly
+    {
+        const char *pszTestFontDir = getenv("LPP_TEST_FONT_DIR");
+        STN stnDir, stnFont, stnPrefix;
+        FNI fniTestDir, fniFont;
+        FTG ftgTtf = kftgTtf;
+        FNE fne;
+        int32_t onn;
+        if (pszTestFontDir != pvNil && *pszTestFontDir != 0)
+        {
+            stnDir.SetUtf8Sz((PU8SZ)pszTestFontDir);
+            stnFont = PszLit("Comic Sans MS");
+            stnPrefix = PszLit("ComicNeue-");
+            if (fniTestDir.FBuildFromPath(&stnDir, kftgDir) && fne.FInit(&fniTestDir, &ftgTtf, 1, 0))
+            {
+                if (_pgst->FFindStn(&stnFont, &onn, fgstUserSorted))
+                {
+                    PGL pglsdlfont;
+                    PSDLFont psdlf;
+                    _pgst->GetExtra(onn, &pglsdlfont);
+                    for (int32_t i = 0; i < pglsdlfont->IvMac(); i++)
+                    {
+                        pglsdlfont->Get(i, &psdlf);
+                        ReleasePpo(&psdlf);
+                    }
+                    pglsdlfont->FSetIvMac(0);
+                }
+                while (fne.FNextFni(&fniFont))
+                {
+                    STN stnLeaf;
+                    fniFont.GetLeaf(&stnLeaf);
+                    if (stnLeaf.Cch() >= stnPrefix.Cch() &&
+                        FEqualRgb(stnLeaf.Psz(), stnPrefix.Psz(), stnPrefix.Cch() * SIZEOF(achar)))
+                    {
+                        FAddFontFile(&fniFont, &stnFont);
+                    }
+                }
+            }
+        }
+    }
+
     fRet = fTrue;
 
 LFail:
