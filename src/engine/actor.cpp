@@ -2749,7 +2749,10 @@ bool ACTR::FMoveRoute(BRS dxr, BRS dyr, BRS dzr, bool *pfMoved, uint32_t grfmaf)
     BRS yrCurOld;
     BRA xa;
     BRA ya;
-    BRA za;
+    // _ApplyRotFromVec never sets the roll angle (it writes *pxa where *pza was meant; kept, playback depends on
+    // it), so za must start at zero: it feeds the speed-vs-turning calculation below. Uninitialized, placed actors
+    // crawled in some directions on desktop builds and not in others.
+    BRA za = aZero;
 
     fMoved = (rZero != dxr || rZero != dyr || rZero != dzr);
     if (pvNil != pfMoved)
