@@ -15,6 +15,7 @@
       drag X Y DX DY [STEPS] [MS]   press at X,Y then move by DX,DY (relative,
                                so it works with the app's own cursor warps)
       move X Y | moveby DX DY | down | up
+      moveactor [DX DY]        move to the selected actor's center (+ DX,DY), e.g. before dragging it
       key NAME [ctrl|shift|alt]   SDL key name: Return, Escape, Left, Z, ...
       keydown NAME | keyup NAME    hold / release a key (Up/Down during a drag change height)
       wait MS
@@ -61,6 +62,7 @@ namespace
 enum class SK
 {
     MouseTo,
+    MouseToActor,
     MouseBy,
     Down,
     Up,
@@ -216,6 +218,8 @@ void Parse(const std::string &text, Batch *pbatch)
             add(SK::MouseTo, n[0], n[1]);
         else if (cmd == "moveby" && n.size() >= 2)
             add(SK::MouseBy, n[0], n[1]);
+        else if (cmd == "moveactor")
+            add(SK::MouseToActor, n.size() >= 2 ? n[0] : 0, n.size() >= 2 ? n[1] : 0);
         else if (cmd == "down")
             add(SK::Down);
         else if (cmd == "up")
@@ -306,22 +310,37 @@ std::vector<std::string> CurrentPlaces(void)
         if (GOB::PgobFromHidScr(pl.hid) != pvNil)
             v.push_back(pl.psz);
 
-    // Speech-bubble menus (help balloons) are how 3DMM asks most questions
+    // While an actor is being placed it follows the mouse until a click drops it; "dragging": a mouse drag in
+    // the movie view (place, move, rotate, resize, record...)
+    PMVIE pmvie = vapp.Pstdio() != pvNil ? vapp.Pstdio()->Pmvie() : pvNil;
+    PMVU pmvu = pmvie != pvNil ? pmvie->PmvuCur() : pvNil;
+    if (pmvu != pvNil && pmvu->Tool() == toolPlace)
+        v.push_back("placing");
+    if (pmvu != pvNil && vpcex->PgobTracking() == pmvu)
+        v.push_back("dragging");
+
+    // Speech-bubble menus (help balloons) are how 3DMM asks most questions; "browser": a chooser (scenes,
+    // actors, props, sounds...) is open
     PGOB pgobScreen = GOB::PgobScreen();
     if (pgobScreen != pvNil)
     {
         GTE gte;
         PGOB pgob;
         uint32_t grfgte;
+        bool fBalloon = false, fBrowser = false;
         gte.Init(pgobScreen, fgteNil);
         while (gte.FNextGob(&pgob, &grfgte, fgteNil))
         {
-            if ((grfgte & fgtePre) && pgob->FIs(kclsHBAL))
-            {
-                v.push_back("balloon");
-                break;
-            }
+            if (!(grfgte & fgtePre))
+                continue;
+            fBalloon = fBalloon || pgob->FIs(kclsHBAL);
+            // (the studio's roll call of actors/props is a browser too, but always there)
+            fBrowser = fBrowser || (pgob->FIs(kclsBRWD) && !pgob->FIs(kclsBRWR));
         }
+        if (fBalloon)
+            v.push_back("balloon");
+        if (fBrowser)
+            v.push_back("browser");
     }
     return v;
 }
@@ -541,6 +560,11 @@ std::string StateJson(void)
             pmvu->GetRc(&rcView, cooGlobal);
         js << ",\"view\":[" << rcView.xpLeft << "," << rcView.ypTop << "," << rcView.xpRight << "," << rcView.ypBottom
            << "]";
+        // Mouse tool of the movie view, who tracks the mouse (a drag in progress) and whether the cursor is hidden
+        PGOB pgobTrack = vpcex->PgobTracking();
+        js << ",\"tool\":" << (pmvu != pvNil ? pmvu->Tool() : -1) << ",\"tracking\":"
+           << JsonStr(pgobTrack == pvNil ? "" : (pgobTrack == pmvu ? "view" : "other"))
+           << ",\"cursor_hidden\":" << (SDL_ShowCursor(SDL_QUERY) == SDL_DISABLE ? "true" : "false");
 
         PSCEN pscen = pmvie->Pscen();
         if (pscen != pvNil)
@@ -683,6 +707,23 @@ void RunStep(const Step &st, uint32_t ts)
         TestSetInputActive(fTrue);
         TestMouseBy(st.a, st.b);
         break;
+    case SK::MouseToActor: {
+        // The selected actor's center is in movie-view coordinates; test coordinates are the window's (640x480)
+        PMVIE pmvie = vapp.Pstdio() != pvNil ? vapp.Pstdio()->Pmvie() : pvNil;
+        PMVU pmvu = pmvie != pvNil ? pmvie->PmvuCur() : pvNil;
+        PACTR pactr = (pmvie != pvNil && pmvie->Pscen() != pvNil) ? pmvie->Pscen()->PactrSelected() : pvNil;
+        if (pmvu == pvNil || pactr == pvNil)
+        {
+            g_cur.errors.push_back("moveactor: no selected actor");
+            break;
+        }
+        PT pt;
+        pactr->GetCenter(&pt.xp, &pt.yp);
+        pmvu->MapPt(&pt, cooLocal, cooHwnd);
+        TestSetInputActive(fTrue);
+        TestMouseTo(pt.xp + st.a, pt.yp + st.b);
+        break;
+    }
     case SK::Down:
     case SK::Up:
         TestSetInputActive(fTrue);
