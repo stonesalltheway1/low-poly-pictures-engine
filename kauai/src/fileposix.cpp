@@ -14,6 +14,10 @@
 #include <cstdio>
 ASSERTNAME
 
+#ifdef __EMSCRIPTEN__
+#include "fileremote.h"
+#endif
+
 const uint32_t kfpError = 0xFFFFFFFF;
 
 /***************************************************************************
@@ -51,6 +55,26 @@ bool FIL::_FOpen(bool fCreate, uint32_t grffil)
         goto LRet;
 
     grffil &= kgrffilPerm;
+
+#ifdef __EMSCRIPTEN__
+    // Content files on the web server are read on demand (see fileremote.h) and are read-only
+    if (_irf == 0 && !fCreate)
+        _irf = IrfFromPath(_fni._stnFile.Psz());
+    if (_irf != 0)
+    {
+        if (fCreate || (grffil & ffilWriteEnable))
+        {
+            Bug("remote files are read-only");
+            goto LRet;
+        }
+        _fOpen = fTrue;
+        _fEverOpen = fTrue;
+        _grffil = (_grffil & ~kgrffilPerm) | grffil;
+        fRet = fTrue;
+        goto LRet;
+    }
+#endif // __EMSCRIPTEN__
+
     if (_fOpen)
     {
         Assert(!fCreate, "can't create an open file");
@@ -103,6 +127,11 @@ void FIL::_Close(bool fFinal)
 
     _mutx.Enter();
 
+#ifdef __EMSCRIPTEN__
+    if (_irf != 0)
+        _fOpen = fFalse;
+#endif // __EMSCRIPTEN__
+
     if (_fOpen)
     {
         Flush();
@@ -129,7 +158,7 @@ void FIL::Flush(void)
 
     _mutx.Enter();
 
-    if (_fOpen)
+    if (_fOpen && _fp != NULL)
         std::fflush(_fp);
 
     _mutx.Leave();
@@ -205,6 +234,15 @@ FP FIL::FpMac(void)
     if (!_fOpen)
         _FOpen(fFalse, _grffil);
 
+#ifdef __EMSCRIPTEN__
+    if (_irf != 0)
+    {
+        fpos = CbRemoteFile(_irf);
+        _mutx.Leave();
+        return fpos;
+    }
+#endif // __EMSCRIPTEN__
+
     if (_el < kelSeek && (std::fseek(_fp, 0, SEEK_END)))
     {
         PushErc(ercFileGeneral);
@@ -240,6 +278,20 @@ bool FIL::FReadRgb(void *pv, int32_t cb, FP fp)
 
     if (!_fOpen)
         _FOpen(fFalse, _grffil);
+
+#ifdef __EMSCRIPTEN__
+    if (_irf != 0)
+    {
+        if (_el < kelRead && !FReadRemoteFile(_irf, pv, cb, fp))
+        {
+            PushErc(ercFileGeneral);
+            _el = kelRead;
+        }
+        fRet = _el < kelRead;
+        _mutx.Leave();
+        return fRet;
+    }
+#endif // __EMSCRIPTEN__
 
     Debug(FP dfp = FpMac() - fp;)
 

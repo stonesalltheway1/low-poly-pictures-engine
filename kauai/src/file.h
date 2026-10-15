@@ -83,6 +83,9 @@ class FIL : public FIL_PAR
     HANDLE _hfile;
 #else
     FILE *_fp;
+#ifdef __EMSCRIPTEN__
+    int32_t _irf; // remote (streamed) file id, 0 for normal files; see fileremote.h
+#endif
 #endif // WIN
 
     // private methods

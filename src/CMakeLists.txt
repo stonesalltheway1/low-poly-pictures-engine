@@ -246,9 +246,28 @@ if (EMSCRIPTEN)
         target_link_options(studio PRIVATE "SHELL:--shell-file \"${3DMM_WEB_SHELL_FILE}\"")
         set_property(TARGET studio APPEND PROPERTY LINK_DEPENDS "${3DMM_WEB_SHELL_FILE}")
     endif()
-    if (3DMM_WEB_CONTENT_DIR)
-        # The .avi intro/help videos must be present (the app looks them up even though video playback is not
-        # implemented on the web yet). TODO: stream them separately instead of bundling.
+    option(3DMM_WEB_STREAM_CONTENT "Read content files from the web server on demand instead of preloading them" ON)
+    if (3DMM_WEB_CONTENT_DIR AND 3DMM_WEB_STREAM_CONTENT)
+        # Content stays on the server, under content/Microsoft Kids/... next to the page; the build only preloads
+        # a list of the files and their sizes (see kauai/src/fileremote.h)
+        file(GLOB_RECURSE web_content_files LIST_DIRECTORIES false RELATIVE "${3DMM_WEB_CONTENT_DIR}"
+            "${3DMM_WEB_CONTENT_DIR}/*")
+        list(SORT web_content_files)
+        set(web_manifest "")
+        foreach(web_file IN LISTS web_content_files)
+            file(SIZE "${3DMM_WEB_CONTENT_DIR}/${web_file}" web_file_size)
+            string(APPEND web_manifest "${web_file_size}\tMicrosoft Kids/${web_file}\n")
+        endforeach()
+        file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/remote-files.txt.new" "${web_manifest}")
+        configure_file("${CMAKE_CURRENT_BINARY_DIR}/remote-files.txt.new" "${CMAKE_CURRENT_BINARY_DIR}/remote-files.txt"
+            COPYONLY)
+        target_link_options(studio PRIVATE
+            "SHELL:--preload-file \"${CMAKE_CURRENT_BINARY_DIR}/remote-files.txt@/app/remote-files.txt\""
+        )
+        set_property(TARGET studio APPEND PROPERTY LINK_DEPENDS "${CMAKE_CURRENT_BINARY_DIR}/remote-files.txt")
+    elseif (3DMM_WEB_CONTENT_DIR)
+        # Preload all content (the .avi intro/help videos must be present: the app looks them up even though video
+        # playback is not implemented on the web yet)
         target_link_options(studio PRIVATE
             "SHELL:--preload-file \"${3DMM_WEB_CONTENT_DIR}@/app/Microsoft Kids\""
         )

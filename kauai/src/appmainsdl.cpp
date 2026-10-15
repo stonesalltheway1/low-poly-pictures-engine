@@ -9,6 +9,9 @@
 ***************************************************************************/
 
 #include "frame.h"
+#ifdef __EMSCRIPTEN__
+#include "fileremote.h"
+#endif
 
 ASSERTNAME
 
@@ -54,6 +57,10 @@ int main(int argc, char *argv[])
 {
 #ifdef DEBUG
     APPB::CreateConsole();
+#endif
+#ifdef __EMSCRIPTEN__
+    // Content files on the web server: create placeholders before anything looks for them
+    FInitRemoteFiles();
 #endif
     vpappb->SetArgv(argv, argc);
     FrameMain();

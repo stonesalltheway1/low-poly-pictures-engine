@@ -180,6 +180,10 @@ elseif(UNIX)
         "${PROJECT_SOURCE_DIR}/kauai/src/fileposix.cpp"
         "${PROJECT_SOURCE_DIR}/kauai/src/fniposix.cpp"
     )
+    if (EMSCRIPTEN)
+        # Content files read from the web server on demand
+        target_sources(KauaiFile PRIVATE "${PROJECT_SOURCE_DIR}/kauai/src/fileremote.cpp")
+    endif()
 else()
     message(FATAL_ERROR "TODO: Select file system implementation")
 endif()

@@ -46,6 +46,7 @@ uint64_t CframeMidiAudible(bool fReset); // midistreamfluidsynth.cpp
 #include <vector>
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
+#include "fileremote.h"
 #endif
 ASSERTNAME
 
@@ -369,6 +370,14 @@ std::string StateJson(void)
     PMVIE pmvie = (pstdio != pvNil) ? pstdio->Pmvie() : pvNil;
     js << ",\"studio\":" << (pstdio != pvNil ? "true" : "false");
     js << ",\"audio\":" << AudioJson();
+#ifdef __EMSCRIPTEN__
+    {
+        // Content downloaded on demand since startup (see fileremote.h)
+        uint64_t cfetch, cbFetched;
+        GetRemoteFileStats(&cfetch, &cbFetched);
+        js << ",\"content\":{\"fetches\":" << cfetch << ",\"bytes\":" << cbFetched << "}";
+    }
+#endif
     js << ",\"places\":[";
     {
         std::vector<std::string> places = CurrentPlaces();

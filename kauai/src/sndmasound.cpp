@@ -13,7 +13,12 @@ ASSERTNAME
 #include "sndmapri.h"
 
 // Sound files smaller than this size will be stored in memory
+#ifdef __EMSCRIPTEN__
+// Web: always. Sounds are decoded in the audio callback, which can't wait for content to download (fileremote.h)
+const int32_t kcbSoundMax = klwMax;
+#else
 const int32_t kcbSoundMax = 64 * 1024;
+#endif
 
 RTCLASS(MiniaudioCachedSound);
 
