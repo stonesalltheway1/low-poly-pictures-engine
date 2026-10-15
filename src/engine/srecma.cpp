@@ -11,6 +11,9 @@
 ASSERTNAME
 
 #include "sndma.h"
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+#endif
 
 RTCLASS(SREC)
 
@@ -158,7 +161,20 @@ SREC::~SREC(void)
     }
 
     if (_fInitDevice)
+    {
+#ifdef __EMSCRIPTEN__
+        // miniaudio closes the capture device but not the microphone stream: stop it, or the browser keeps showing
+        // the microphone as in use until the page is closed
+        EM_ASM(
+            {
+                var device = window.miniaudio && window.miniaudio.get_device_by_index($0);
+                if (device && device.streamNode && device.streamNode.mediaStream)
+                    device.streamNode.mediaStream.getTracks().forEach(function(track) { track.stop(); });
+            },
+            _device.webaudio.deviceIndex);
+#endif // __EMSCRIPTEN__
         ma_device_uninit(&_device);
+    }
 
     FreePhq(&_hqBuffer);
 }
