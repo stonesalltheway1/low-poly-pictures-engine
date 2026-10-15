@@ -351,12 +351,18 @@ void APPB::_DispatchEvt(PEVT pevt)
             // A GOB is tracking the mouse.
             // Send a cidTrackMouse message instead of a cidMouseDown message.
 
+            // Like APPB::TrackMouse, report the point relative to the tracking GOB (the event has window
+            // coordinates; unmapped, a click during a drag made dragged actors jump by the view's offset)
+            pt.xp = xp;
+            pt.yp = yp;
+            pgob->MapPt(&pt, cooHwnd, cooLocal);
+
             CMD_MOUSE cmd;
             cmd.pcmh = pgob;
             cmd.pgg = pvNil;
             cmd.cid = cidTrackMouse;
-            cmd.xp = xp;
-            cmd.yp = yp;
+            cmd.xp = pt.xp;
+            cmd.yp = pt.yp;
             cmd.grfcust = grfcust;
             cmd.cact = 1;
 
