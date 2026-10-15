@@ -4,6 +4,8 @@
 
 ***************************************************************************/
 
+#include <cstdlib>
+#include <filesystem>
 #include "studio.h"
 #include "utilhex.h"
 #include "platform.h"
@@ -27,9 +29,25 @@ static bool FFindConfigFile(PFNI pfniConfigFile)
     STN stnT;
     SZ szPath;
 
-    // Find a platform-specific path to store config files
+    // Find a platform-specific path to store config files. Automated test runs (LPP_TEST_DIR) use a fresh config
+    // folder inside the test directory, so every run starts like a first launch (as the browser build does).
     ClearPb(szPath, SIZEOF(szPath));
-    if (FGetAppConfigDir(szPath, CvFromRgv(szPath)))
+    const char *pszTestDir = getenv("LPP_TEST_DIR");
+    bool fGotDir = fFalse;
+    if (pszTestDir != pvNil && *pszTestDir != 0)
+    {
+        stnT.SetSz(pszTestDir);
+        fGotDir = stnT.FAppendSz(PszLit("/config")) && stnT.Cch() < CvFromRgv(szPath);
+        if (fGotDir)
+        {
+            CopyPb(stnT.Psz(), szPath, (stnT.Cch() + 1) * SIZEOF(achar));
+            std::error_code ec;
+            std::filesystem::create_directories(szPath, ec);
+        }
+    }
+    else
+        fGotDir = FGetAppConfigDir(szPath, CvFromRgv(szPath));
+    if (fGotDir)
     {
         stnT = szPath;
         if (pfniConfigFile->FBuildFromPath(&stnT, kftgDir))

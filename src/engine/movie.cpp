@@ -27,6 +27,9 @@ Actors, Text boxes, etc.
 ***************************************************************************/
 
 #include "soc.h"
+#ifdef KAUAI_SDL
+#include "testhooks.h"
+#endif
 ASSERTNAME
 
 #define krScaleMouseRecord BR_SCALAR(0.20)
@@ -7409,7 +7412,7 @@ void MVU::_MouseDrag(CMD_MOUSE *pcmd)
     fKeyUp = (GetKeyState(VK_UP) < 0);
     fKeyDown = (GetKeyState(VK_DOWN) < 0);
 #elif defined(KAUAI_SDL)
-    const uint8_t *rgbKeyStates = SDL_GetKeyboardState(pvNil);
+    const uint8_t *rgbKeyStates = KauaiGetKeyboardState();
     if (rgbKeyStates)
     {
         fKeyUp = FPure(rgbKeyStates[SDL_SCANCODE_UP]);

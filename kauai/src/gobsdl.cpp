@@ -7,6 +7,7 @@
 
 ***************************************************************************/
 #include "frame.h"
+#include "testhooks.h"
 ASSERTNAME
 
 PGOB GOB::_pgobScreen;
@@ -129,7 +130,7 @@ void GOB::GetPtMouse(PT *ppt, bool *pfDown)
     int xp = 0, yp = 0;
     float fxp, fyp;
     SDL_Renderer *rdr = SDL_GetRenderer((SDL_Window *)vwig.hwndApp);
-    int mouseState = SDL_GetMouseState(&xp, &yp);
+    int mouseState = KauaiGetMouseState(&xp, &yp);
     SDL_RenderWindowToLogical(rdr, xp, yp, &fxp, &fyp);
     xp = (int)fxp;
     yp = (int)fyp;

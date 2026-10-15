@@ -123,6 +123,7 @@ if(3DMM_GUI STREQUAL "SDL")
         studio
         PRIVATE
         "${PROJECT_SOURCE_DIR}/src/studio/dlgsdl.cpp"
+        "${PROJECT_SOURCE_DIR}/src/studio/lpptest.cpp"
     )
 
     # Select portfolio

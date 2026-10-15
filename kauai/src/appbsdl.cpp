@@ -12,6 +12,7 @@
 #include "fcntl.h"
 #include "stdio.h"
 #include "sndma.h"
+#include "testhooks.h"
 
 ASSERTNAME
 
@@ -227,7 +228,7 @@ void APPB::TrackMouse(PGOB pgob, PT *ppt)
     else if (ret == 0)
     {
         // No mouse move events: just get the current position instead
-        int state = SDL_GetMouseState(&xp, &yp);
+        int state = KauaiGetMouseState(&xp, &yp);
         SDL_Renderer *rdr = SDL_GetRenderer((SDL_Window *)vwig.hwndApp);
         float flx, fly;
         SDL_RenderWindowToLogical(rdr, xp, yp, &flx, &fly);
@@ -795,7 +796,7 @@ uint32_t APPB::GrfcustCur(bool fAsync)
 
     _grfcust &= ~kgrfcustUser;
 
-    ret = SDL_GetMouseState(pvNil, pvNil);
+    ret = KauaiGetMouseState(pvNil, pvNil);
     if (ret & SDL_BUTTON(1))
     {
         _grfcust |= fcustMouse;
@@ -861,7 +862,7 @@ void APPB::PositionCurs(int32_t xpScreen, int32_t ypScreen)
     // dragged actor jump ("speeds away"). The app only warps a hidden cursor while dragging actors/text boxes and
     // then works with mouse deltas, so switch to relative mode (Pointer Lock): SDL then accumulates movement deltas
     // from the warped position, exactly like a real warp on the desktop. ShowCurs releases it.
-    if (SDL_ShowCursor(SDL_QUERY) == SDL_DISABLE && !SDL_GetRelativeMouseMode())
+    if (SDL_ShowCursor(SDL_QUERY) == SDL_DISABLE && !SDL_GetRelativeMouseMode() && !FTestInputActive())
         SDL_SetRelativeMouseMode(SDL_TRUE);
 #endif
 
@@ -870,7 +871,10 @@ void APPB::PositionCurs(int32_t xpScreen, int32_t ypScreen)
     GOB::PgobScreen()->MapPt(&pt, cooGlobal, cooLocal);
     rdr = SDL_GetRenderer((SDL_Window *)vwig.hwndApp);
     SDL_RenderLogicalToWindow(rdr, (float)pt.xp, (float)pt.yp, &xp, &yp);
-    SDL_WarpMouseInWindow((SDL_Window *)vwig.hwndApp, xp, yp);
+    if (FTestInputActive())
+        TestWarpVirtual(xp, yp);
+    else
+        SDL_WarpMouseInWindow((SDL_Window *)vwig.hwndApp, xp, yp);
 
     if (_fFlushCursor)
     {

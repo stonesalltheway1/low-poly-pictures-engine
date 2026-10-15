@@ -11,6 +11,9 @@
 
 ***************************************************************************/
 #include "frame.h"
+#ifdef KAUAI_SDL
+#include "testhooks.h"
+#endif
 ASSERTNAME
 
 #ifdef __EMSCRIPTEN__
@@ -611,6 +614,12 @@ void APPB::TopOfLoop(void)
     // background work that runs on helper threads in other builds
     RunPollProcs();
 #endif // KAUAI_NO_THREADS
+
+#ifdef KAUAI_SDL
+    // Test automation driver (inactive unless attached)
+    if (vpfnTestTick != pvNil)
+        vpfnTestTick();
+#endif
 }
 
 /***************************************************************************

@@ -29,6 +29,11 @@
 
 ASSERTNAME
 
+#ifdef KAUAI_SDL
+void LppTestInit(void);         // lpptest.cpp
+bool FLppTestDesktopMode(void); // lpptest.cpp
+#endif
+
 // If the following value is defined, 3DMM displays the dlidDesktopResizing
 // and dlidDesktopResized dialogs before and immediately after res-switching.
 // The current thought is that these dialogs are unnecessary since we only
@@ -311,6 +316,9 @@ bool APP::_FInit(uint32_t grfapp, uint32_t grfgob, int32_t ginDef)
 
 #ifdef KAUAI_SDL
     AssertDo(FSetWindowIcon(vrgbAppIcon48x48, vcbAppIcon48x48), "Couldn't set application icon");
+
+    // Attach the Low Poly Pictures test driver (desktop: only when LPP_TEST_DIR is set)
+    LppTestInit();
 #endif // KAUAI_SDL
 
     if (!_FInitAcceleratorTable())
@@ -824,6 +832,15 @@ bool APP::_FEnsureDisplayResolution(void)
     int32_t fSwitchRes;
     bool fNoValue;
     int32_t tsResize;
+
+#ifdef KAUAI_SDL
+    // Automated test runs (LPP_TEST_DIR) always use a 640x480 window
+    if (FLppTestDesktopMode())
+    {
+        _fRunInWindow = fTrue;
+        return fTrue;
+    }
+#endif
 
 #ifdef __EMSCRIPTEN__
     // In the browser the "display" is the page canvas: always run in a 640x480 window (canvas). Fullscreen is

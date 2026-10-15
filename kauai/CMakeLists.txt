@@ -505,6 +505,7 @@ elseif(3DMM_GUI STREQUAL "SDL")
         ${PROJECT_SOURCE_DIR}/kauai/src/gobsdl.cpp
         ${PROJECT_SOURCE_DIR}/kauai/src/fontsdl.cpp
         ${PROJECT_SOURCE_DIR}/kauai/src/cursorsdl.cpp
+        ${PROJECT_SOURCE_DIR}/kauai/src/testhooks.cpp
     )
 
     find_package(Fontconfig)
