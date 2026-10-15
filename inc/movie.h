@@ -891,6 +891,11 @@ class MVIE : public MVIE_PAR
     {
         _fAutosaveDirty = fDirty;
     }
+    void DiscardChanges(void) // Forget unsaved changes so the movie closes without asking (test driver)
+    {
+        _fAutosaveDirty = fFalse;
+        _fDirty = fFalse;
+    }
 
     //
     // Roll call

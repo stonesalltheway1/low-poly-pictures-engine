@@ -842,6 +842,9 @@ void RunStep(const Step &st, uint32_t ts)
         STN stn;
         std::string path = ExpandPath(st.str);
         stn.SetUtf8Sz((PU8SZ)path.c_str());
+        // Tests open one movie after another: never stop at "save changes?" (it would wait for a click)
+        if (pstdio != pvNil && pstdio->Pmvie() != pvNil)
+            pstdio->Pmvie()->DiscardChanges();
         if (pstdio != pvNil && fni.FBuildFromPath(&stn))
             fOk = pstdio->FLoadMovie(&fni);
         g_cur.results.push_back("{\"open\":" + JsonStr(path) + ",\"ok\":" + (fOk ? "true" : "false") + "}");
