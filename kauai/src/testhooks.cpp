@@ -83,15 +83,31 @@ void TestSetInputActive(bool fActive)
     _fInputActive = fActive;
 }
 
-static void _LogicalToWindow(int32_t xp, int32_t yp, int *pxpWin, int *pypWin)
+void KauaiLogicalToWindow(int32_t xp, int32_t yp, int *pxpWin, int *pypWin)
 {
     SDL_Renderer *rdr = SDL_GetRenderer(_PwndApp());
-    if (rdr != pvNil)
-        SDL_RenderLogicalToWindow(rdr, (float)xp, (float)yp, pxpWin, pypWin);
-    else
+    if (rdr == pvNil)
     {
         *pxpWin = xp;
         *pypWin = yp;
+        return;
+    }
+
+    // SDL truncates both ways, so when the window is scaled by a fraction the converted point can land in the window
+    // pixel that belongs to the previous logical pixel (1.575x: 2 -> 3.15 -> 3 -> 1.9 -> 1), and a drag that warps
+    // the cursor every tick creeps. Step forward until it maps back (once is enough for scales >= 1).
+    SDL_RenderLogicalToWindow(rdr, (float)xp, (float)yp, pxpWin, pypWin);
+    for (int itry = 0; itry < 4; itry++)
+    {
+        float flx, fly;
+        SDL_RenderWindowToLogical(rdr, *pxpWin, *pypWin, &flx, &fly);
+        bool fShortX = (int32_t)flx < xp, fShortY = (int32_t)fly < yp;
+        if (!fShortX && !fShortY)
+            break;
+        if (fShortX)
+            (*pxpWin)++;
+        if (fShortY)
+            (*pypWin)++;
     }
 }
 
@@ -128,7 +144,7 @@ static void _PushMotion(int xpWin, int ypWin)
 void TestMouseTo(int32_t xpLogical, int32_t ypLogical)
 {
     int xpWin, ypWin;
-    _LogicalToWindow(xpLogical, ypLogical, &xpWin, &ypWin);
+    KauaiLogicalToWindow(xpLogical, ypLogical, &xpWin, &ypWin);
     _PushMotion(xpWin, ypWin);
 }
 

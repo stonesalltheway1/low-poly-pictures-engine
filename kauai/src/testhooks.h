@@ -22,6 +22,9 @@ extern PFNTESTTICK vpfnTestTick;
 // SDL_GetMouseState replacement used by the Kauai SDL layer (window coordinates)
 uint32_t KauaiGetMouseState(int *pxp, int *pyp);
 
+// Logical (640x480) point -> window pixel that SDL maps back to exactly that point (for cursor warps)
+void KauaiLogicalToWindow(int32_t xp, int32_t yp, int *pxpWin, int *pypWin);
+
 // SDL_GetKeyboardState replacement: also reports keys a test is holding down (injected key events don't
 // update SDL's own key state, which the studio polls for Up/Down during drags)
 const uint8_t *KauaiGetKeyboardState(void);

@@ -860,8 +860,6 @@ void APPB::ShowCurs(void)
 ***************************************************************************/
 void APPB::PositionCurs(int32_t xpScreen, int32_t ypScreen)
 {
-    SDL_Renderer *rdr;
-    float flxp, flyp;
     int xp, yp;
     PT pt;
 
@@ -880,8 +878,8 @@ void APPB::PositionCurs(int32_t xpScreen, int32_t ypScreen)
     pt.xp = xpScreen;
     pt.yp = ypScreen;
     GOB::PgobScreen()->MapPt(&pt, cooGlobal, cooLocal);
-    rdr = SDL_GetRenderer((SDL_Window *)vwig.hwndApp);
-    SDL_RenderLogicalToWindow(rdr, (float)pt.xp, (float)pt.yp, &xp, &yp);
+    // (exact: SDL_RenderLogicalToWindow alone can be a pixel short when the window is scaled by a fraction)
+    KauaiLogicalToWindow(pt.xp, pt.yp, &xp, &yp);
     if (FTestInputActive())
         TestWarpVirtual(xp, yp);
     else
