@@ -206,7 +206,8 @@ elseif("${3DMM_BRENDER_LIBRARY}" STREQUAL "Source")
     FetchContent_Declare(
         3DMM-BRender
         GIT_REPOSITORY https://github.com/benstone/3DMM-BRender
-        GIT_TAG blazin
+        # branch blazin, pinned so builds are reproducible (2026-06-27, "STD/stdmem.c: remove malloc.h include")
+        GIT_TAG ead3840533467be7d089091fd2e3959a890c84e0
     )
 
     set(BRENDER_ASAN OFF)
