@@ -36,6 +36,8 @@
                                file (or of scene SCENE); CTG is 4 characters, e.g. LPDC
       chunkget PATH | CTG CHID [SCENE]   read such a chunk back: {"found":..., "text":...}
       saveas PATH              save the open movie to PATH (the studio's Save As, without the dialog)
+      sceneinfo                frame range of every scene of the open movie: {"sceneinfo":[[first,last],...]}
+                               (visits each scene, then returns to the one that was open)
       release                  hand the mouse back to the real user
       echo TEXT
 ***************************************************************************/
@@ -88,6 +90,7 @@ enum class SK
     ChunkAdd,
     ChunkGet,
     SaveAs,
+    SceneInfo,
     Type,
     Error
 };
@@ -283,6 +286,8 @@ void Parse(const std::string &text, Batch *pbatch)
             add(cmd == "copy" ? SK::Copy : (cmd == "chunkadd" ? SK::ChunkAdd : SK::ChunkGet), 0, 0, rest);
         else if (cmd == "saveas" && !rest.empty())
             add(SK::SaveAs, 0, 0, rest);
+        else if (cmd == "sceneinfo")
+            add(SK::SceneInfo);
         else if (cmd == "release")
             add(SK::Release);
         else if (cmd == "echo")
@@ -950,6 +955,30 @@ void RunStep(const Step &st, uint32_t ts)
                                     ",\"text\":" + JsonStr(text) + "}");
         if (!err.empty())
             g_cur.errors.push_back((fAdd ? "chunkadd: " : "chunkget: ") + err);
+        break;
+    }
+    case SK::SceneInfo: {
+        PSTDIO pstdio = vapp.Pstdio();
+        PMVIE pmvie = pstdio != pvNil ? pstdio->Pmvie() : pvNil;
+        std::ostringstream js;
+        js << "{\"sceneinfo\":[";
+        if (pmvie != pvNil)
+        {
+            int32_t iscenOrg = pmvie->Iscen();
+            for (int32_t iscen = 0; iscen < pmvie->Cscen(); iscen++)
+            {
+                bool fOk = pmvie->FSwitchScen(iscen) && pmvie->Pscen() != pvNil;
+                js << (iscen ? "," : "") << "[" << (fOk ? pmvie->Pscen()->NfrmFirst() : -1) << ","
+                   << (fOk ? pmvie->Pscen()->NfrmLast() : -1) << "]";
+            }
+            if (iscenOrg >= 0)
+                pmvie->FSwitchScen(iscenOrg);
+        }
+        else
+            g_cur.errors.push_back("sceneinfo: no movie");
+        js << "]}";
+        g_cur.results.push_back(js.str());
+        g_tsNext = ts + 300;
         break;
     }
     case SK::SaveAs: {

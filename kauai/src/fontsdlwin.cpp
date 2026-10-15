@@ -122,7 +122,19 @@ bool NTL::_FLoadFontTable()
     }
 
     // Test runs (LPP_TEST_FONT_DIR, set by the Low Poly Pictures test runner): use the web build's bundled
-    // substitute instead of the system's Comic Sans, so desktop and browser screenshots can match exactly
+    // substitutes instead of the system fonts (same table as fontsdlbundle.cpp), so desktop and browser
+    // screenshots can match exactly
+    static const struct
+    {
+        PCSZ pszFont;
+        PCSZ pszSubstituteFilePrefix;
+    } rgsubTest[] = {
+        {PszLit("Comic Sans MS"), PszLit("ComicNeue-")},
+        {PszLit("Arial"), PszLit("LiberationSans-")},
+        {PszLit("Times New Roman"), PszLit("LiberationSerif-")},
+        {PszLit("Courier New"), PszLit("LiberationMono-")},
+    };
+    for (int32_t isub = 0; isub < (int32_t)CvFromRgv(rgsubTest); isub++)
     {
         const char *pszTestFontDir = getenv("LPP_TEST_FONT_DIR");
         STN stnDir, stnFont, stnPrefix;
@@ -133,8 +145,8 @@ bool NTL::_FLoadFontTable()
         if (pszTestFontDir != pvNil && *pszTestFontDir != 0)
         {
             stnDir.SetUtf8Sz((PU8SZ)pszTestFontDir);
-            stnFont = PszLit("Comic Sans MS");
-            stnPrefix = PszLit("ComicNeue-");
+            stnFont = rgsubTest[isub].pszFont;
+            stnPrefix = rgsubTest[isub].pszSubstituteFilePrefix;
             if (fniTestDir.FBuildFromPath(&stnDir, kftgDir) && fne.FInit(&fniTestDir, &ftgTtf, 1, 0))
             {
                 if (_pgst->FFindStn(&stnFont, &onn, fgstUserSorted))

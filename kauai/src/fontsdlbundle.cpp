@@ -83,6 +83,10 @@ bool NTL::_FLoadFontTable()
             PCSZ pszSubstituteFilePrefix;
         } rgsub[] = {
             {PszLit("Comic Sans MS"), PszLit("ComicNeue-")}, // Comic Neue, SIL Open Font License
+            // Liberation (SIL OFL): metric-compatible with the Windows core fonts that movies commonly use
+            {PszLit("Arial"), PszLit("LiberationSans-")},
+            {PszLit("Times New Roman"), PszLit("LiberationSerif-")},
+            {PszLit("Courier New"), PszLit("LiberationMono-")},
         };
 
         for (int32_t isub = 0; isub < (int32_t)CvFromRgv(rgsub); isub++)
