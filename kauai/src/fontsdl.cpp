@@ -227,6 +227,68 @@ bool NTL::FAddAllFontsInDir(PFNI pfniFontDir)
     return fTrue;
 }
 
+bool NTL::_FLoadBundledFonts(PFNI pfniFontDir)
+{
+    AssertPo(pfniFontDir, 0);
+
+    FTG ftgTtf = kftgTtf;
+    FNE fne;
+    FNI fniFont, fniDefault;
+    STN stn;
+    int32_t onn;
+
+    if (!FAddAllFontsInDir(pfniFontDir) || _pgst->IvMac() == 0)
+        return fFalse;
+
+    // Default for font names that aren't available: Liberation Sans (Arial metrics, close to what the Windows font
+    // mapper picked for most missing fonts), else the first font in the folder
+    fniDefault = *pfniFontDir;
+    stn = PszLit("LiberationSans-Regular.ttf");
+    if (!fniDefault.FSetLeaf(&stn) || fniDefault.TExists() != tYes)
+    {
+        if (!fne.FInit(pfniFontDir, &ftgTtf, 1, 0) || !fne.FNextFni(&fniDefault))
+            return fFalse;
+    }
+    stn = PszLit("System Default");
+    if (!FAddFontFile(&fniDefault, &stn, &onn))
+        return fFalse;
+    _onnSystem = onn;
+
+    // The original content and movies ask for fonts by name, and those can't be redistributed: register
+    // open-licensed substitutes' files under those names
+    static const struct
+    {
+        PCSZ pszFont;
+        PCSZ pszSubstituteFilePrefix;
+    } rgsub[] = {
+        {PszLit("Comic Sans MS"), PszLit("ComicNeue-")}, // Comic Neue, SIL Open Font License
+        // Liberation (SIL OFL): metric-compatible with the Windows core fonts that movies commonly use
+        {PszLit("Arial"), PszLit("LiberationSans-")},
+        {PszLit("Times New Roman"), PszLit("LiberationSerif-")},
+        {PszLit("Courier New"), PszLit("LiberationMono-")},
+    };
+    for (int32_t isub = 0; isub < (int32_t)CvFromRgv(rgsub); isub++)
+    {
+        STN stnFont = rgsub[isub].pszFont;
+        STN stnPrefix = rgsub[isub].pszSubstituteFilePrefix;
+        if (FGetOnn(&stnFont, &onn) && onn != _onnSystem)
+            continue; // the real font is bundled
+        if (!fne.FInit(pfniFontDir, &ftgTtf, 1, 0))
+            continue;
+        while (fne.FNextFni(&fniFont))
+        {
+            STN stnLeaf;
+            fniFont.GetLeaf(&stnLeaf);
+            if (stnLeaf.Cch() >= stnPrefix.Cch() &&
+                FEqualRgb(stnLeaf.Psz(), stnPrefix.Psz(), stnPrefix.Cch() * SIZEOF(achar)))
+            {
+                FAddFontFile(&fniFont, &stnFont);
+            }
+        }
+    }
+    return fTrue;
+}
+
 /***************************************************************************
     Initialize the font table.
 ***************************************************************************/

@@ -114,6 +114,14 @@ class NTL : public NTL_PAR
     bool FAddFontFile(PFNI pfniFontFile, PSTN pstnFontName = pvNil, int32_t *ponn = pvNil);
 
     /**
+     * @brief Use only the fonts bundled in a folder (web build; desktop test runs): add them all, pick the
+     * default font for names that aren't available, and register open-licensed substitutes under the names of
+     * the Windows fonts that movies ask for (Comic Sans MS, Arial, Times New Roman, Courier New)
+     * @param pfniFontDir  Folder with the bundled font files
+     **/
+    bool _FLoadBundledFonts(PFNI pfniFontDir);
+
+    /**
      * @brief Add all of the available fonts to the font list.
      * This function should also set the default font number, _onnSystem.
      **/

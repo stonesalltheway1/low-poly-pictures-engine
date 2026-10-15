@@ -87,6 +87,18 @@ bool NTL::_FLoadFontTable()
     PGL pglsdlfont = pvNil;
     FNI fniFontDir, fniDefaultFont;
 
+    // Test runs (LPP_TEST_FONT_DIR, set by the Low Poly Pictures test runner): use only the web build's bundled
+    // fonts, with the same default and substitutes, so desktop and browser screenshots can match exactly
+    const char *pszTestFontDir = getenv("LPP_TEST_FONT_DIR");
+    if (pszTestFontDir != pvNil && *pszTestFontDir != 0)
+    {
+        STN stnDir;
+        stnDir.SetUtf8Sz((PU8SZ)pszTestFontDir);
+        if (fniFontDir.FBuildFromPath(&stnDir, kftgDir) && _FLoadBundledFonts(&fniFontDir))
+            return fTrue;
+        Bug("Could not load the test fonts");
+    }
+
     // FUTURE: Add support for per-user fonts
     if (!FFindSystemFontDir(&fniFontDir))
     {
@@ -119,60 +131,6 @@ bool NTL::_FLoadFontTable()
     {
         Bug("Could not find a default font file");
         goto LFail;
-    }
-
-    // Test runs (LPP_TEST_FONT_DIR, set by the Low Poly Pictures test runner): use the web build's bundled
-    // substitutes instead of the system fonts (same table as fontsdlbundle.cpp), so desktop and browser
-    // screenshots can match exactly
-    static const struct
-    {
-        PCSZ pszFont;
-        PCSZ pszSubstituteFilePrefix;
-    } rgsubTest[] = {
-        {PszLit("Comic Sans MS"), PszLit("ComicNeue-")},
-        {PszLit("Arial"), PszLit("LiberationSans-")},
-        {PszLit("Times New Roman"), PszLit("LiberationSerif-")},
-        {PszLit("Courier New"), PszLit("LiberationMono-")},
-    };
-    for (int32_t isub = 0; isub < (int32_t)CvFromRgv(rgsubTest); isub++)
-    {
-        const char *pszTestFontDir = getenv("LPP_TEST_FONT_DIR");
-        STN stnDir, stnFont, stnPrefix;
-        FNI fniTestDir, fniFont;
-        FTG ftgTtf = kftgTtf;
-        FNE fne;
-        int32_t onn;
-        if (pszTestFontDir != pvNil && *pszTestFontDir != 0)
-        {
-            stnDir.SetUtf8Sz((PU8SZ)pszTestFontDir);
-            stnFont = rgsubTest[isub].pszFont;
-            stnPrefix = rgsubTest[isub].pszSubstituteFilePrefix;
-            if (fniTestDir.FBuildFromPath(&stnDir, kftgDir) && fne.FInit(&fniTestDir, &ftgTtf, 1, 0))
-            {
-                if (_pgst->FFindStn(&stnFont, &onn, fgstUserSorted))
-                {
-                    PGL pglsdlfont;
-                    PSDLFont psdlf;
-                    _pgst->GetExtra(onn, &pglsdlfont);
-                    for (int32_t i = 0; i < pglsdlfont->IvMac(); i++)
-                    {
-                        pglsdlfont->Get(i, &psdlf);
-                        ReleasePpo(&psdlf);
-                    }
-                    pglsdlfont->FSetIvMac(0);
-                }
-                while (fne.FNextFni(&fniFont))
-                {
-                    STN stnLeaf;
-                    fniFont.GetLeaf(&stnLeaf);
-                    if (stnLeaf.Cch() >= stnPrefix.Cch() &&
-                        FEqualRgb(stnLeaf.Psz(), stnPrefix.Psz(), stnPrefix.Cch() * SIZEOF(achar)))
-                    {
-                        FAddFontFile(&fniFont, &stnFont);
-                    }
-                }
-            }
-        }
     }
 
     fRet = fTrue;
