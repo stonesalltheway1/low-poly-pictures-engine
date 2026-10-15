@@ -147,6 +147,7 @@ if(3DMM_GUI STREQUAL "SDL")
             PRIVATE
             "${PROJECT_SOURCE_DIR}/src/studio/portfweb.cpp"
             "${PROJECT_SOURCE_DIR}/src/studio/webrecovery.cpp"
+            "${PROJECT_SOURCE_DIR}/src/studio/webexport.cpp"
         )
     else()
         # Portfolio not supported
