@@ -296,6 +296,12 @@ PMBMP MBMP::PmbmpRead(PBLCK pblck)
         qmbmph->rc.xpRight = rc.xpLeft;
         qmbmph->rc.ypBottom = rc.ypTop;
     }
+    else if (!FIn(rc.xpLeft, kswMin, kswMax + 1) || !FIn(rc.ypTop, kswMin, kswMax + 1) ||
+             !FIn(rc.xpRight, kswMin, kswMax + 1) || !FIn(rc.ypBottom, kswMin, kswMax + 1))
+    {
+        // keep the size computations below (and the drawing code's) from overflowing
+        goto LFail;
+    }
 
     cbRgcb = LwMul(rc.Dyp(), SIZEOF(int16_t));
     if (SIZEOF(MBMPH) + cbRgcb > cbTot)
@@ -317,8 +323,7 @@ PMBMP MBMP::PmbmpRead(PBLCK pblck)
         SwapBytesRgsw(pmbmp->_Qrgcb(), rc.Dyp());
     }
 
-#ifdef DEBUG
-    // verify the rgcb and rgb
+    // verify the rgcb and rgb: the drawing code trusts the row sizes and runs
     int32_t ccb, cb, dxp;
     uint8_t *qb;
     bool fMask = pmbmp->_Qmbmph()->fMask;
@@ -330,7 +335,7 @@ PMBMP MBMP::PmbmpRead(PBLCK pblck)
     {
         cb = *qcb++;
         if (!FIn(cb, 0, cbTot + 1))
-            goto LFailDebug;
+            goto LFailVerify;
         cbTot -= cb;
         qb = qbRow;
         dxp = 0;
@@ -346,16 +351,15 @@ PMBMP MBMP::PmbmpRead(PBLCK pblck)
                 qb += *qb + 1;
         }
         if (dxp > rc.Dxp() || qb != qbRow + cb)
-            goto LFailDebug;
+            goto LFailVerify;
         qbRow = qb;
     }
     if (cbTot != 0)
     {
-    LFailDebug:
-        Bug("Attempted to read bad MBMP");
+    LFailVerify:
+        Warn("Attempted to read bad MBMP");
         ReleasePpo(&pmbmp);
     }
-#endif // DEBUG
 
     AssertNilOrPo(pmbmp, 0);
     return pmbmp;
