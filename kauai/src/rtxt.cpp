@@ -1137,6 +1137,8 @@ bool TXRD::_FReadChunk(PCFL pcfl, CTG ctg, CNO cno, bool fCopyText)
     KID kid;
     int32_t icact;
     int32_t cact;
+    int32_t impe;
+    MPE mpe;
     RDOP rdop;
     int16_t bo, osk;
 
@@ -1221,6 +1223,19 @@ bool TXRD::_FReadChunk(PCFL pcfl, CTG ctg, CNO cno, bool fCopyText)
             }
             if (!_FOpenArg(icact, B3Lw(cact), bo, osk))
                 return fFalse;
+        }
+    }
+
+    // property values of sprms kept in the argument group index it: they must
+    // name live entries, since the code that uses them trusts them
+    for (impe = _pglmpe->IvMac(); impe-- > 0;)
+    {
+        _pglmpe->Get(impe, &mpe);
+        if (mpe.lw > 0 && _FSprmInAg(_SprmFromSpcp(mpe.spcp)) &&
+            (pvNil == _pagcact || !FIn(mpe.lw, 1, _pagcact->IvMac() + 1) || _pagcact->FFree(mpe.lw - 1)))
+        {
+            Warn("text property names a missing argument");
+            return fFalse;
         }
     }
 
@@ -2126,6 +2141,13 @@ void TXRD::FetchChp(int32_t cp, PCHP pchp, int32_t *pcpMin, int32_t *pcpLim)
             {
                 uint8_t *qrgb;
 
+                // the font index comes from the file: it must name an entry
+                // of the argument group (which may be missing altogether)
+                if (pvNil == _pagcact || !FIn(mpe.lw, 1, _pagcact->IvMac() + 1) || _pagcact->FFree(mpe.lw - 1))
+                {
+                    Warn("bad font index");
+                    break;
+                }
                 qrgb = (uint8_t *)_pagcact->QvGet(mpe.lw - 1, &cb);
                 cb -= SIZEOF(int32_t) + SIZEOF(int16_t); // onn, osk
                 if (!FIn(cb, 0, kcbMaxDataStn + 1))
