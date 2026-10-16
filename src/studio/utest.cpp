@@ -154,13 +154,23 @@ void APP::Run(uint32_t grfapp, uint32_t grfgob, int32_t ginDef)
     catch (...)
 #endif
     {
-        PDLG pdlg;
-
-        pdlg = DLG::PdlgNew(dlidAbnormalExit, pvNil, pvNil);
-        if (pdlg != pvNil)
+        // In an automated test run (LPP_TEST_DIR) never put up a modal dialog:
+        // it would freeze the harness and leave a window on the desktop. Just
+        // log and quit; the runner sees the process exit and reports it.
+        if (FLppTestDesktopMode())
         {
-            pdlg->IditDo();
-            ReleasePpo(&pdlg);
+            fprintf(stderr, "[3dmm-web] abnormal exit during test run\n");
+        }
+        else
+        {
+            PDLG pdlg;
+
+            pdlg = DLG::PdlgNew(dlidAbnormalExit, pvNil, pvNil);
+            if (pdlg != pvNil)
+            {
+                pdlg->IditDo();
+                ReleasePpo(&pdlg);
+            }
         }
 
         _fQuit = fTrue;
