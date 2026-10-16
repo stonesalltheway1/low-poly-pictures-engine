@@ -230,7 +230,7 @@ if (EMSCRIPTEN)
     # Web build: 3dmovie.html/.js/.wasm/.data. Content and fonts are preloaded into the virtual filesystem
     # under /app (see kauai/src/platemscripten.cpp).
     set(3DMM_WEB_CONTENT_DIR "" CACHE PATH "Directory containing the installed 'Microsoft Kids' content to preload")
-    set(3DMM_WEB_FONTS_DIR "" CACHE PATH "Directory containing .ttf fonts to bundle (e.g. Comic Neue)")
+    set(3DMM_WEB_FONTS_DIR "" CACHE PATH "Directory containing .ttf fonts to bundle (e.g. Comic Relief)")
     set_target_properties(studio PROPERTIES SUFFIX ".html")
     target_link_options(studio PRIVATE
         "-sASYNCIFY"

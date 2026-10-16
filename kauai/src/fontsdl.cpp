@@ -261,7 +261,10 @@ bool NTL::_FLoadBundledFonts(PFNI pfniFontDir)
         PCSZ pszFont;
         PCSZ pszSubstituteFilePrefix;
     } rgsub[] = {
-        {PszLit("Comic Sans MS"), PszLit("ComicNeue-")}, // Comic Neue, SIL Open Font License
+        // Comic Relief (SIL OFL) is metric-compatible with Comic Sans MS, so text wraps as in 1995; Comic Neue (SIL
+        // OFL) is the fallback (narrower). The first one found is used: FGetOnn finds it for the second entry.
+        {PszLit("Comic Sans MS"), PszLit("ComicRelief-")},
+        {PszLit("Comic Sans MS"), PszLit("ComicNeue-")},
         // Liberation (SIL OFL): metric-compatible with the Windows core fonts that movies commonly use
         {PszLit("Arial"), PszLit("LiberationSans-")},
         {PszLit("Times New Roman"), PszLit("LiberationSerif-")},
