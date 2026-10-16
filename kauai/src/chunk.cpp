@@ -1214,6 +1214,40 @@ tribool CFL::_TValidIndex(void)
     if (ccrpRefTot != ckidTot)
         return tNo;
 
+    // each chunk's parent count must match the number of times it is a child
+    // (deleting a parent deletes children whose count drops to zero)
+    if (ckidTot > 0)
+    {
+        int32_t *prgcref;
+        int32_t ikid;
+        tribool tRet = tYes;
+
+        if (!FAllocPv((void **)&prgcref, LwMul(_pggcrp->IvMac(), SIZEOF(int32_t)), fmemClear, mprNormal))
+            return tMaybe;
+        for (icrp = _pggcrp->IvMac(); tYes == tRet && icrp-- != 0;)
+        {
+            qcrp = (CRP *)_pggcrp->QvFixedGet(icrp);
+            for (ikid = qcrp->ckid; ikid-- > 0;)
+            {
+                _pggcrp->GetRgb(icrp, _BvKid(ikid), SIZEOF(KID), &kid);
+                if (!_FFindCtgCno(kid.cki.ctg, kid.cki.cno, &icrpT))
+                {
+                    tRet = tNo;
+                    break;
+                }
+                prgcref[icrpT]++;
+            }
+        }
+        for (icrp = _pggcrp->IvMac(); tYes == tRet && icrp-- != 0;)
+        {
+            if (((CRP *)_pggcrp->QvFixedGet(icrp))->ccrpRef != prgcref[icrp])
+                tRet = tNo;
+        }
+        FreePpv((void **)&prgcref);
+        if (tYes != tRet)
+            return tRet;
+    }
+
     SuspendAssertValid();
     SuspendCheckPointers();
 
@@ -1562,6 +1596,24 @@ bool CFL::_FReadIndex(void)
     }
     else
         _pggcrp->Unlock();
+
+    // The rest of CFL relies on these: chunk data lies between the header and
+    // the index, and the index is sorted by (ctg, cno) without duplicates
+    // (_FFindCtgCno does a binary search).
+    for (icrp = 0; icrp < _pggcrp->IvMac(); icrp++)
+    {
+        CRP *qcrp = (CRP *)_pggcrp->QvFixedGet(icrp);
+        CRP *qcrpPrev = icrp > 0 ? (CRP *)_pggcrp->QvFixedGet(icrp - 1) : pvNil;
+
+        if (qcrp->Cb() < 0 || qcrp->Cb() > 0 && !FIn(qcrp->fp, SIZEOF(CFP), cfp.fpIndex - qcrp->Cb() + 1) ||
+            pvNil != qcrpPrev && (qcrpPrev->cki.ctg > qcrp->cki.ctg ||
+                                  qcrpPrev->cki.ctg == qcrp->cki.ctg && qcrpPrev->cki.cno >= qcrp->cki.cno))
+        {
+            Bug("corrupt index");
+            ReleasePpo(&_pggcrp);
+            return fFalse;
+        }
+    }
 
     _cbFreeMap = cfp.cbMap;
     _fpFreeMap = cfp.fpMap;
