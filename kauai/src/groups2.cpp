@@ -183,18 +183,19 @@ bool GSTB::_FRead(PBLCK pblck, int16_t *pbo, int16_t *posk)
         SwapBytesBom(&gstf, kbomGstf);
 
     cb -= SIZEOF(gstf);
-    // don't use LwMul, in case the file is corrupted, we don't want to assert,
-    // we should detect it below.
-    cbT = gstf.cbEntry * gstf.ibstMac;
+    // check the sizes before multiplying: values from a damaged file can
+    // overflow (don't use LwMul, it would assert)
     if (gstf.bo != kboCur || !FIn(gstf.cbEntry, SIZEOF(int32_t), kcbMax) || (gstf.cbEntry % SIZEOF(int32_t)) != 0 ||
-        !FIn(gstf.ibstMac, 0, kcbMax) || !FIn(gstf.bstMac, gstf.ibstMac - LwMax(0, gstf.cbstFree), kcbMax) ||
-        cb != cbT + gstf.bstMac || (gstf.cbstFree == cvNil) != (_cbstFree == cvNil) ||
+        !FIn(gstf.ibstMac, 0, cb / gstf.cbEntry + 1) ||
+        !FIn(gstf.bstMac, gstf.ibstMac - LwMax(0, gstf.cbstFree), kcbMax) ||
+        gstf.bstMac != cb - gstf.cbEntry * gstf.ibstMac || (gstf.cbstFree == cvNil) != (_cbstFree == cvNil) ||
         gstf.cbstFree != cvNil && !FIn(gstf.cbstFree, 0, LwMax(1, gstf.ibstMac)))
     {
     LBug:
         Warn("file corrupt or not a GSTB");
         goto LFail;
     }
+    cbT = gstf.cbEntry * gstf.ibstMac;
 
     _cbEntry = gstf.cbEntry;
     _ivMac = gstf.ibstMac;
@@ -205,13 +206,98 @@ bool GSTB::_FRead(PBLCK pblck, int16_t *pbo, int16_t *posk)
     {
         if (bo == kboOther)
             _SwapBytesRgbst();
-        if (koskCur != gstf.osk)
+        if (!_FValidRgbst(gstf.osk))
+        {
+            Warn("file corrupt or not a GSTB");
+            fRet = fFalse;
+        }
+        else if (koskCur != gstf.osk)
             fRet = _FTranslateGrst(gstf.osk);
     }
 
 LFail:
     TrashVarIf(!fRet, pbo);
     TrashVarIf(!fRet, posk);
+    return fRet;
+}
+
+/***************************************************************************
+    Return the size in bytes of the saved string at qb in the given osk
+    (whose characters are cbChar bytes), or -1 if it is too long.
+***************************************************************************/
+static int32_t _CbStOsk(uint8_t *qb, int16_t osk, int32_t cbChar)
+{
+    int32_t cch;
+
+    if (cbChar == SIZEOF(schar))
+        cch = *qb;
+    else
+    {
+        wchar chw;
+
+        CopyPb(qb, &chw, SIZEOF(wchar));
+        if (osk == BigLittle(koskUniWin, koskUniMac))
+            SwapBytesRgsw(&chw, 1);
+        cch = (int32_t)(uint16_t)chw;
+    }
+    return cch > kcchMaxSt ? -1 : (cch + 1) * cbChar;
+}
+
+/***************************************************************************
+    Validate a string table just read from a file, before its strings are
+    translated: each string (in the file's osk) must lie inside the string
+    data, the strings must exactly fill it and free entries must match
+    _cbstFree. The rest of the string table code trusts this, so a damaged
+    file has to fail here.
+***************************************************************************/
+bool GSTB::_FValidRgbst(int16_t osk)
+{
+    AssertBaseThis(0);
+    int32_t cbChar = CbCharOsk(osk);
+    int32_t ibst, bst, cbst, cbstUsed, cbstFree, bstLim, ibv;
+    int32_t *prgbv;
+    bool fInOrder = fTrue;
+    bool fRet;
+
+    if (cbChar != SIZEOF(schar) && cbChar != SIZEOF(wchar))
+        return fFalse;
+
+    cbstUsed = cbstFree = bstLim = 0;
+    for (ibst = 0; ibst < _ivMac; ibst++)
+    {
+        if (bvNil == (bst = _Bst(ibst)))
+        {
+            // only an AST has free entries
+            if (cvNil == _cbstFree)
+                return fFalse;
+            cbstFree++;
+            continue;
+        }
+        if (!FIn(bst, 0, _bstMac - cbChar + 1) || !FIn(cbst = _CbStOsk(_Qb1(bst), osk, cbChar), 0, _bstMac - bst + 1))
+            return fFalse;
+        if (bst != bstLim)
+            fInOrder = fFalse;
+        bstLim = bst + cbst;
+        cbstUsed++;
+    }
+    if (cvNil != _cbstFree && cbstFree != _cbstFree)
+        return fFalse;
+    if (fInOrder)
+        return bstLim == _bstMac; // the strings follow each other and fill the data
+
+    // the strings aren't in data order, so sort them to check that they
+    // don't overlap and fill the data
+    if (!FAllocPv((void **)&prgbv, LwMul(cbstUsed, 2 * SIZEOF(int32_t)), fmemNil, mprNormal))
+        return fFalse;
+    for (ibv = 0, ibst = 0; ibst < _ivMac; ibst++)
+    {
+        if (bvNil == (bst = _Bst(ibst)))
+            continue;
+        prgbv[ibv++] = bst;
+        prgbv[ibv++] = bst + _CbStOsk(_Qb1(bst), osk, cbChar);
+    }
+    fRet = _FDisjointRgbv(prgbv, cbstUsed, _bstMac, fTrue);
+    FreePpv((void **)&prgbv);
     return fRet;
 }
 
@@ -607,9 +693,11 @@ bool GSTB::_FTranslateGrst(int16_t osk)
     {
         qbst = _Qbst(ibst);
         bstOld = *qbst;
+        if (bvNil == bstOld)
+            continue; // free entry in an AST
         *qbst = _bstMac;
 
-        if (bstOld + cbChar > cbSrc)
+        if (!FIn(bstOld, 0, cbSrc - cbChar + 1))
             goto LFail;
 
         if (cbChar == SIZEOF(schar))

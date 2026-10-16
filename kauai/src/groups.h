@@ -79,6 +79,7 @@ class GRPB : public GRPB_PAR
     bool _FWrite(PBLCK pblck, void *pv, int32_t cb, int32_t cb1, int32_t cb2);
     bool _FReadData(PBLCK pblck, int32_t ib, int32_t cb1, int32_t cb2);
     bool _FDup(PGRPB pgrpbDst, int32_t cb1, int32_t cb2);
+    static bool _FDisjointRgbv(int32_t *prgbv, int32_t cbv, int32_t bvMac, bool fFill);
 
     GRPB(void)
     {
@@ -268,6 +269,7 @@ class GGB : public GGB_PAR
         return (LOC *)_Qb2(LwMul(iloc, SIZEOF(LOC)));
     }
     bool _FRead(PBLCK pblck, int16_t *pbo, int16_t *posk);
+    bool _FValidLocs(void);
 
     bool _FDup(PGGB pggbDst);
 
@@ -418,6 +420,7 @@ class GSTB : public GSTB_PAR
     void _TranslateGrst(int16_t osk, bool fToCur);
     bool _FTranslateGrst(int16_t osk);
     bool _FRead(PBLCK pblck, int16_t *pbo, int16_t *posk);
+    bool _FValidRgbst(int16_t osk);
 
     bool _FDup(PGSTB pgstbDst);
 

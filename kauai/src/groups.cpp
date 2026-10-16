@@ -252,6 +252,40 @@ bool GRPB::_FReadData(PBLCK pblck, int32_t cb1, int32_t cb2, int32_t ib)
     return fTrue;
 }
 
+/***************************************************************************
+    qsort comparison for _FDisjointRgbv: order (bv, bvLim) pairs by bv.
+***************************************************************************/
+static int _CompareRgbv(const void *pv1, const void *pv2)
+{
+    int32_t bv1 = *(const int32_t *)pv1;
+    int32_t bv2 = *(const int32_t *)pv2;
+
+    return bv1 < bv2 ? -1 : (bv1 > bv2 ? 1 : 0);
+}
+
+/***************************************************************************
+    Used to validate group data read from a file. prgbv holds cbv
+    (bv, bvLim) pairs, each describing a block of data inside [0, bvLim).
+    Sorts the pairs and returns whether the blocks don't overlap. If fFill
+    is set, the blocks must also exactly fill [0, bvMac).
+***************************************************************************/
+bool GRPB::_FDisjointRgbv(int32_t *prgbv, int32_t cbv, int32_t bvMac, bool fFill)
+{
+    AssertIn(cbv, 0, kcbMax);
+    AssertPvCb(prgbv, LwMul(cbv, 2 * SIZEOF(int32_t)));
+    int32_t ibv;
+    int32_t bvLim = 0;
+
+    qsort(prgbv, cbv, 2 * SIZEOF(int32_t), _CompareRgbv);
+    for (ibv = 0; ibv < 2 * cbv; ibv += 2)
+    {
+        if (prgbv[ibv] < bvLim || fFill && prgbv[ibv] != bvLim)
+            return fFalse;
+        bvLim = prgbv[ibv + 1];
+    }
+    return fFill ? bvLim == bvMac : bvLim <= bvMac;
+}
+
 #ifdef DEBUG
 /***************************************************************************
     Assert the validity of the grpb stuff.
@@ -537,7 +571,9 @@ bool GL::_FRead(PBLCK pblck, int16_t *pbo, int16_t *posk)
         SwapBytesBom(&glf, kbomGlf);
 
     cb -= SIZEOF(glf);
-    if (glf.bo != kboCur || glf.cbEntry <= 0 || glf.ivMac < 0 || cb != glf.cbEntry * glf.ivMac)
+    // don't multiply cbEntry by ivMac: values from a damaged file can overflow
+    if (glf.bo != kboCur || glf.cbEntry <= 0 || glf.ivMac < 0 || cb % glf.cbEntry != 0 ||
+        cb / glf.cbEntry != glf.ivMac)
     {
     LBug:
         Warn("file corrupt or not a GL");
@@ -892,19 +928,37 @@ bool AL::_FRead(PBLCK pblck, int16_t *pbo, int16_t *posk)
         SwapBytesBom(&alf, kbomAlf);
 
     cb -= SIZEOF(alf);
-    cbT = alf.cbEntry * alf.ivMac;
-    if (alf.bo != kboCur || alf.cbEntry <= 0 || alf.ivMac < 0 || cb != cbT + CbFromCbit(alf.ivMac) ||
-        alf.cvFree >= LwMax(1, alf.ivMac))
+    // check the sizes before multiplying: values from a damaged file can overflow
+    if (alf.bo != kboCur || alf.cbEntry <= 0 || !FIn(alf.ivMac, 0, cb / alf.cbEntry + 1) ||
+        cb != alf.cbEntry * alf.ivMac + CbFromCbit(alf.ivMac) || !FIn(alf.cvFree, 0, LwMax(1, alf.ivMac)))
     {
     LBug:
         Warn("file corrupt or not an AL");
         goto LFail;
     }
+    cbT = alf.cbEntry * alf.ivMac;
 
     _cbEntry = alf.cbEntry;
     _ivMac = alf.ivMac;
     _cvFree = alf.cvFree;
     fRet = _FReadData(pblck, cbT, cb - cbT, SIZEOF(alf));
+    if (fRet)
+    {
+        // FAdd looks for a free entry in the bit array whenever _cvFree > 0,
+        // so the count has to match the bits
+        int32_t iv, cvFree;
+
+        for (cvFree = 0, iv = 0; iv < _ivMac; iv++)
+        {
+            if (!(*_Qgrfbit(iv) & Fbit(iv)))
+                cvFree++;
+        }
+        if (cvFree != _cvFree)
+        {
+            Warn("file corrupt or not an AL");
+            fRet = fFalse;
+        }
+    }
 
 LFail:
     TrashVarIf(!fRet, pbo);
@@ -1205,15 +1259,17 @@ bool GGB::_FRead(PBLCK pblck, int16_t *pbo, int16_t *posk)
         SwapBytesBom(&ggf, kbomGgf);
 
     cb -= SIZEOF(ggf);
-    cbT = ggf.ilocMac * SIZEOF(LOC);
-    if (ggf.bo != kboCur || ggf.bvMac < 0 || ggf.ilocMac < 0 || cb != cbT + ggf.bvMac || ggf.cbFixed < 0 ||
-        ggf.cbFixed >= kcbMax || (ggf.clocFree == cvNil) != (_clocFree == cvNil) ||
+    // check the sizes before multiplying: values from a damaged file can overflow
+    if (ggf.bo != kboCur || ggf.bvMac < 0 || !FIn(ggf.ilocMac, 0, cb / SIZEOF(LOC) + 1) ||
+        ggf.bvMac != cb - ggf.ilocMac * SIZEOF(LOC) || ggf.cbFixed < 0 || ggf.cbFixed >= kcbMax ||
+        (ggf.clocFree == cvNil) != (_clocFree == cvNil) ||
         ggf.clocFree != cvNil && (ggf.clocFree < 0 || ggf.clocFree >= ggf.ilocMac))
     {
     LBug:
         Warn("file corrupt or not a GGB");
         goto LFail;
     }
+    cbT = ggf.ilocMac * SIZEOF(LOC);
 
     _ivMac = ggf.ilocMac;
     _bvMac = ggf.bvMac;
@@ -1226,10 +1282,81 @@ bool GGB::_FRead(PBLCK pblck, int16_t *pbo, int16_t *posk)
         // adjust the byte order on the loc's.
         SwapBytesRglw(_Qb2(0), LwMulDiv(_ivMac, SIZEOF(LOC), SIZEOF(int32_t)));
     }
+    if (fRet && !_FValidLocs())
+    {
+        Warn("file corrupt or not a GGB");
+        fRet = fFalse;
+    }
 
 LFail:
     TrashVarIf(!fRet, pbo);
     TrashVarIf(!fRet, posk);
+    return fRet;
+}
+
+/***************************************************************************
+    Validate the element locations of a group just read from a file. Each
+    element must lie inside the data (with the padding to a long boundary
+    that the group keeps after it), elements must not overlap and free
+    entries must match _clocFree. The rest of the group code trusts this, so
+    a damaged file has to fail here.
+***************************************************************************/
+bool GGB::_FValidLocs(void)
+{
+    AssertBaseThis(0);
+    LOC loc;
+    int32_t iloc, clocUsed, clocFree, bvLim, ibv;
+    int32_t *prgbv;
+    bool fInOrder = fTrue;
+    bool fRet;
+
+    clocUsed = clocFree = bvLim = 0;
+    for (iloc = 0; iloc < _ivMac; iloc++)
+    {
+        loc = *_Qloc(iloc);
+        if (bvNil == loc.bv)
+        {
+            // only an AG has free entries
+            if (cvNil == _clocFree || loc.cb != 0)
+                return fFalse;
+            clocFree++;
+            continue;
+        }
+        if (loc.cb < _cbFixed)
+            return fFalse;
+        if (loc.cb == 0)
+        {
+            // empty element
+            if (loc.bv != 0)
+                return fFalse;
+            continue;
+        }
+        if (!FIn(loc.bv, 0, _bvMac) || loc.cb > _bvMac - loc.bv || CbRoundToLong(loc.cb) > _bvMac - loc.bv)
+            return fFalse;
+        if (loc.bv < bvLim)
+            fInOrder = fFalse;
+        bvLim = loc.bv + CbRoundToLong(loc.cb);
+        clocUsed++;
+    }
+    if (cvNil != _clocFree && clocFree != _clocFree)
+        return fFalse;
+    if (fInOrder)
+        return fTrue; // each element starts after the previous one ends
+
+    // GG::Move and GG::Swap reorder the locs, so sort the extents to check
+    // for overlaps
+    if (!FAllocPv((void **)&prgbv, LwMul(clocUsed, 2 * SIZEOF(int32_t)), fmemNil, mprNormal))
+        return fFalse;
+    for (ibv = 0, iloc = 0; iloc < _ivMac; iloc++)
+    {
+        loc = *_Qloc(iloc);
+        if (bvNil == loc.bv || loc.cb == 0)
+            continue;
+        prgbv[ibv++] = loc.bv;
+        prgbv[ibv++] = loc.bv + CbRoundToLong(loc.cb);
+    }
+    fRet = _FDisjointRgbv(prgbv, clocUsed, _bvMac, fFalse);
+    FreePpv((void **)&prgbv);
     return fRet;
 }
 
