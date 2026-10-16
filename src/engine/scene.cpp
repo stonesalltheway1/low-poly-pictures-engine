@@ -3767,6 +3767,16 @@ PGG DeserializeStartEVs(int16_t bo, PGG pggsevStart)
     CHID chid;
     TAGF tagf;
     TAG tag;
+    int32_t cbVar;
+    bool fBkgd = fFalse;
+
+    // the events come from a file: their sizes must match what the code below
+    // and SCEN copy them into
+    if (pggsevStart->CbFixed() != SIZEOF(SEV))
+    {
+        Warn("Bad GG read for event");
+        return pvNil;
+    }
 
     _pggsevStart = pggsevStart->PggDup();
     if (_pggsevStart == pvNil)
@@ -3774,7 +3784,7 @@ PGG DeserializeStartEVs(int16_t bo, PGG pggsevStart)
 
     for (isevStart = 0; isevStart < _pggsevStart->IvMac(); isevStart++)
     {
-        sev = *(SEV *)_pggsevStart->QvFixedGet(isevStart);
+        sev = *(SEV *)_pggsevStart->QvFixedGet(isevStart, &cbVar);
 
         //
         // Swap byte ordering of entry
@@ -3788,6 +3798,8 @@ PGG DeserializeStartEVs(int16_t bo, PGG pggsevStart)
         switch (sev.sevt)
         {
         case sevtAddActr:
+            if (cbVar != SIZEOF(CHID))
+                goto LFail;
             _pggsevStart->Get(isevStart, &chid);
             if (bo == kboOther)
             {
@@ -3797,6 +3809,8 @@ PGG DeserializeStartEVs(int16_t bo, PGG pggsevStart)
             break;
 
         case sevtAddTbox:
+            if (cbVar != SIZEOF(CHID))
+                goto LFail;
             _pggsevStart->Get(isevStart, &chid);
             if (bo == kboOther)
             {
@@ -3806,21 +3820,34 @@ PGG DeserializeStartEVs(int16_t bo, PGG pggsevStart)
             break;
 
         case sevtSetBkgd:
+            if (cbVar != SIZEOF(TAGF))
+                goto LFail;
             _pggsevStart->Get(isevStart, &tagf);
             DeserializeTagfToTag(&tagf, &tag);
-            _pggsevStart->FPut(isevStart, SIZEOF(TAG), &tag);
+            if (!_pggsevStart->FPut(isevStart, SIZEOF(TAG), &tag))
+                goto LFail;
+            fBkgd = fTrue;
             break;
 
         case sevtChngCamera:
         case sevtPause:
         case sevtPlaySnd:
         default:
-            Bug("Bad event in start event list");
-            break;
+            // only actors, text boxes and the background start a scene
+            Warn("Bad event in start event list");
+            goto LFail;
         }
     }
 
+    // every scene has a background (camera changes use it)
+    if (!fBkgd)
+        goto LFail;
+
     return _pggsevStart;
+
+LFail:
+    ReleasePpo(&_pggsevStart);
+    return pvNil;
 }
 
 /***************************************************************************
@@ -3873,6 +3900,15 @@ PGG DeserializeFrameEVs(int16_t bo, PGG pggsevFrm)
     int32_t ctagc;
     int32_t itagc;
     TAGCF *tagcf;
+    int32_t cbVar;
+
+    // the events come from a file: their sizes must match what the code below
+    // and SCEN copy them into
+    if (pggsevFrm->CbFixed() != SIZEOF(SEV))
+    {
+        Warn("Bad GG read for event");
+        return pvNil;
+    }
 
     _pggsevFrm = pggsevFrm->PggDup();
     if (_pggsevFrm == pvNil)
@@ -3880,7 +3916,7 @@ PGG DeserializeFrameEVs(int16_t bo, PGG pggsevFrm)
 
     for (isevFrm = 0; isevFrm < _pggsevFrm->IvMac(); isevFrm++)
     {
-        sev = *(SEV *)_pggsevFrm->QvFixedGet(isevFrm);
+        sev = *(SEV *)_pggsevFrm->QvFixedGet(isevFrm, &cbVar);
 
         //
         // Swap byte ordering of entry
@@ -3894,11 +3930,24 @@ PGG DeserializeFrameEVs(int16_t bo, PGG pggsevFrm)
         switch (sev.sevt)
         {
         case sevtPlaySnd:
+            // Byte-swapped sound events can't be read: ctagc is read before it is
+            // swapped below (and PscenRead swaps the SSE again).
+            if (cbVar < SIZEOF(SSE) || bo == kboOther)
+                goto LFail;
+
             // Deserialize GG using TAGCF to SSE with TAGC
-            if (!FAllocPv((void **)&psseOld, pggsevFrm->Cb(isevFrm), fmemClear, mprNormal))
+            if (!FAllocPv((void **)&psseOld, cbVar, fmemClear, mprNormal))
                 goto LFail;
             _pggsevFrm->Get(isevFrm, psseOld);
             ctagc = psseOld->ctagc;
+
+            // the number of sounds comes from the file: it must match the size
+            if (!FIn(ctagc, 0, (cbVar - SIZEOF(SSE)) / SIZEOF(TAGCF) + 1) ||
+                cbVar != SIZEOF(SSE) + ctagc * SIZEOF(TAGCF))
+            {
+                FreePpv((void **)&psseOld);
+                goto LFail;
+            }
 
             psseNew = SSE::PsseNew(ctagc);
             if (psseNew == pvNil)
@@ -3933,6 +3982,8 @@ PGG DeserializeFrameEVs(int16_t bo, PGG pggsevFrm)
             break;
 
         case sevtChngCamera:
+            if (cbVar != SIZEOF(CHID))
+                goto LFail;
             _pggsevFrm->Get(isevFrm, &chid);
             if (bo == kboOther)
             {
@@ -3940,6 +3991,16 @@ PGG DeserializeFrameEVs(int16_t bo, PGG pggsevFrm)
             }
             _pggsevFrm->Put(isevFrm, &chid);
             break;
+
+        case sevtPause:
+            if (cbVar != SIZEOF(SEVP))
+                goto LFail;
+            break;
+
+        default:
+            // only sounds, camera changes and pauses happen in frames
+            Warn("Bad event in frame event list");
+            goto LFail;
         }
     }
 
