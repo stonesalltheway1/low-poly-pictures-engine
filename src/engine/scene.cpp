@@ -1490,7 +1490,9 @@ bool SCEN::_FPlaySev(PSEV psev, void *qvVar, uint32_t grfscen)
 
     case sevtChngCamera:
 
-        Assert(_pbkgd != pvNil, "No background in the scene");
+        // a scene read from a file may have no background yet (a new scene gets one right after it's inserted)
+        if (_pbkgd == pvNil)
+            return fFalse;
         if (grfscen & fscenCams)
         {
             return (fTrue);
@@ -1563,7 +1565,8 @@ bool SCEN::_FUnPlaySev(PSEV psev, void *qvVar)
 
     case sevtChngCamera:
 
-        Assert(_pbkgd != pvNil, "No background in scene");
+        if (_pbkgd == pvNil)
+            return fFalse;
 
         //
         // Go backwards and find previous camera position.
@@ -3768,7 +3771,6 @@ PGG DeserializeStartEVs(int16_t bo, PGG pggsevStart)
     TAGF tagf;
     TAG tag;
     int32_t cbVar;
-    bool fBkgd = fFalse;
 
     // the events come from a file: their sizes must match what the code below
     // and SCEN copy them into
@@ -3826,7 +3828,6 @@ PGG DeserializeStartEVs(int16_t bo, PGG pggsevStart)
             DeserializeTagfToTag(&tagf, &tag);
             if (!_pggsevStart->FPut(isevStart, SIZEOF(TAG), &tag))
                 goto LFail;
-            fBkgd = fTrue;
             break;
 
         case sevtChngCamera:
@@ -3839,10 +3840,9 @@ PGG DeserializeStartEVs(int16_t bo, PGG pggsevStart)
         }
     }
 
-    // every scene has a background (camera changes use it)
-    if (!fBkgd)
-        goto LFail;
-
+    // A scene may have no background yet: MVIE::FAddScen inserts a new empty
+    // scene (written and read back here) before setting its background. Camera
+    // changes check for one when they play (_FPlaySev, _FUnPlaySev).
     return _pggsevStart;
 
 LFail:
