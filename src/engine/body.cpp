@@ -790,6 +790,10 @@ void BODY::_RemoveMaterial(int32_t ibset)
     int32_t ibact;
     bool fCmtl = fFalse;
 
+    // body part set numbers can come from files (costume events, CMTLs)
+    if (!FIn(ibset, 0, _cbset))
+        return;
+
     pcmtlOld = _prgpcmtl[ibset];
     if (pvNil != pcmtlOld) // there was a CMTL on this bset
     {
@@ -826,6 +830,10 @@ void BODY::SetPartSetMtrl(int32_t ibset, MTRL *pmtrl)
     BACT *pbact;
     int32_t ibact;
 
+    // body part set numbers can come from files (costume events)
+    if (!FIn(ibset, 0, _cbset))
+        return;
+
     _RemoveMaterial(ibset); // remove existing MTRL/CMTL, if any
 
     // for each body part, if this part is in the set ibset, set the MTRL
@@ -859,6 +867,13 @@ void BODY::SetPartSetCmtl(CMTL *pcmtl)
     int32_t ibmtl = 0;
     int32_t ibset = pcmtl->Ibset();
     PMODL pmodl;
+
+    // the CMTL's body part set comes from a file
+    if (!FIn(ibset, 0, _cbset))
+    {
+        Warn("CMTL for a body part set this body doesn't have");
+        return;
+    }
 
     pcmtl->AddRef();
     _RemoveMaterial(ibset); // remove existing MTRL/CMTL
@@ -904,6 +919,15 @@ void BODY::GetPartSetMaterial(int32_t ibset, bool *pfMtrl, MTRL **ppmtrl, CMTL *
 
     BACT *pbact;
     int32_t ibact;
+
+    if (!FIn(ibset, 0, _cbset))
+    {
+        // no such body part set: report no material
+        *pfMtrl = fTrue;
+        *ppmtrl = pvNil;
+        TrashVar(ppcmtl);
+        return;
+    }
 
     *ppcmtl = _prgpcmtl[ibset];
     if (pvNil != *ppcmtl) // there is a CMTL on this bset

@@ -37,6 +37,12 @@ struct ACTF // Actor chunk on file
 VERIFY_STRUCT_SIZE(ACTF, 44)
 const BOM kbomActf = 0x5ffc0000 | kbomTag;
 
+// Size on file of the variable part of each type of actor event (aetAdd ..
+// aetRotH). The events are copied into structs of these sizes.
+static const int32_t _mpaetcbVarf[aetLim] = {kcbVarAdd,  kcbVarActn, SIZEOF(AEVCOSTF), kcbVarRot,   kcbVarPull,
+                                             kcbVarSize, SIZEOF(AEVSNDF), kcbVarMove, kcbVarFreeze, kcbVarTweak,
+                                             kcbVarStep, kcbVarZero, kcbVarRot};
+
 /***************************************************************************
     Deserialize all events in pggaev
 ***************************************************************************/
@@ -46,10 +52,18 @@ PGG DeserializeAEVs(int16_t bo, PGG pggaevf)
 
     PGG pggaev;
     int32_t iaev;
+    int32_t aet;
     AEVCOSTF *paevcostf;
     AEVCOST aevcost;
     AEVSNDF *paevsndf;
     AEVSND aevsnd;
+
+    // the events come from a file: check the sizes before anything copies them
+    if (pggaevf->CbFixed() != SIZEOF(AEV))
+    {
+        Warn("Bad GG read for actor events");
+        return pvNil;
+    }
 
     pggaev = pggaevf->PggDup();
     if (pggaev == pvNil)
@@ -62,7 +76,15 @@ PGG DeserializeAEVs(int16_t bo, PGG pggaevf)
             SwapBytesBom(pggaev->QvFixedGet(iaev), kbomAev);
         }
 
-        switch (((AEV *)pggaev->QvFixedGet(iaev))->aet)
+        aet = ((AEV *)pggaev->QvFixedGet(iaev))->aet;
+        if (!FIn(aet, 0, aetLim) || pggaev->Cb(iaev) != _mpaetcbVarf[aet])
+        {
+            Warn("Bad actor event");
+            ReleasePpo(&pggaev);
+            return pvNil;
+        }
+
+        switch (aet)
         {
         case aetCost:
             if (kboOther == bo)
@@ -76,7 +98,11 @@ PGG DeserializeAEVs(int16_t bo, PGG pggaevf)
             aevcost.fCmtl = paevcostf->fCmtl;
             DeserializeTagfToTag(&paevcostf->tag, &aevcost.tag);
 
-            pggaev->FPut(iaev, SIZEOF(AEVCOST), &aevcost);
+            if (!pggaev->FPut(iaev, SIZEOF(AEVCOST), &aevcost))
+            {
+                ReleasePpo(&pggaev);
+                return pvNil;
+            }
             break;
         case aetSnd:
             if (kboOther == bo)
@@ -94,7 +120,11 @@ PGG DeserializeAEVs(int16_t bo, PGG pggaevf)
             aevsnd.chid = paevsndf->chid;
             DeserializeTagfToTag(&paevsndf->tag, &aevsnd.tag);
 
-            pggaev->FPut(iaev, SIZEOF(AEVSND), &aevsnd);
+            if (!pggaev->FPut(iaev, SIZEOF(AEVSND), &aevsnd))
+            {
+                ReleasePpo(&pggaev);
+                return pvNil;
+            }
             break;
         case aetSize:
             if (kboOther == bo)
@@ -541,10 +571,24 @@ bool ACTR::_FReadRoute(PCFL pcfl, CNO cno)
     _pglrpt = GL::PglRead(&blck, &bo);
     if (pvNil == _pglrpt)
         return fFalse;
+    if (_pglrpt->CbEntry() != SIZEOF(RPT))
+    {
+        // GL::Get copies CbEntry() bytes into an RPT
+        Warn("bad route");
+        ReleasePpo(&_pglrpt);
+        return fFalse;
+    }
     AssertBomRglw(kbomRpt, SIZEOF(RPT));
     if (kboOther == bo)
     {
         SwapBytesRglw(_pglrpt->QvGet(0), LwMul(_pglrpt->IvMac(), SIZEOF(RPT) / SIZEOF(int32_t)));
+    }
+    if (_pglrpt->IvMac() > 0 && rZero != ((RPT *)_pglrpt->QvGet(_pglrpt->IvMac() - 1))->dwr)
+    {
+        // a route ends with a zero distance, which stops _AdvanceRtel at its last point
+        Warn("bad route");
+        ReleasePpo(&_pglrpt);
+        return fFalse;
     }
     return fTrue;
 }
@@ -560,6 +604,8 @@ bool ACTR::_FReadEvents(PCFL pcfl, CNO cno)
     BLCK blck;
     int16_t bo;
     PGG pggaevf;
+    int32_t iaev;
+    int32_t irpt;
 
     if (!pcfl->FFind(kctgGgae, cno, &blck))
         return fFalse;
@@ -568,6 +614,20 @@ bool ACTR::_FReadEvents(PCFL pcfl, CNO cno)
         return fFalse;
     _pggaev = DeserializeAEVs(bo, pggaevf);
     ReleasePpo(&pggaevf);
+    if (pvNil == _pggaev)
+        return fFalse;
+
+    // events are located on the route by route point: _FReadRoute has read it
+    AssertPo(_pglrpt, 0);
+    for (iaev = 0; iaev < _pggaev->IvMac(); iaev++)
+    {
+        irpt = ((AEV *)_pggaev->QvFixedGet(iaev))->rtel.irpt;
+        if (!FIn(irpt, 0, _pglrpt->IvMac()))
+        {
+            Warn("actor event off the route");
+            return fFalse;
+        }
+    }
     return fTrue;
 }
 
@@ -710,6 +770,8 @@ PGL ACTR::PgltagFetch(PCFL pcfl, CNO cno, bool *pfError)
     if (pvNil == pggaevf)
         goto LFail;
     pggaev = DeserializeAEVs(bo, pggaevf);
+    if (pvNil == pggaev)
+        goto LFail;
     pggaev->Lock();
     for (iaev = 0; iaev < pggaev->IvMac(); iaev++)
     {

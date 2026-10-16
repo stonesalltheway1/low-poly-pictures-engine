@@ -1094,6 +1094,9 @@ bool ACTR::_FDoAevCore(int32_t iaev)
         else
         {
             PMTRL pmtrl;
+            // the body part set comes from the file
+            if (!FIn(aevcost.ibset, 0, _pbody->Cbset()))
+                return fFalse;
             pmtrl = (PMTRL)vptagm->PbacoFetch(&aevcost.tag, MTRL::FReadMtrl);
             if (pvNil == pmtrl)
                 return fFalse;
