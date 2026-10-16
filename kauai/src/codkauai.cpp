@@ -873,9 +873,10 @@ bool KCDC::_FDecode2(void *pvSrc, int32_t cbSrc, void *pvDst, int32_t cbDst, int
 
         if (!_FTest(ibit))
         {
-            // literal
+            // literal: cb + 1 bytes (cb whole bytes, then a final byte that is
+            // either copied too or assembled from the bits around them)
 #ifdef SAFETY
-            if (pbDst + cb > pbLimDst)
+            if (pbLimDst - pbDst <= cb)
                 goto LFail;
             if (pbSrc - 3 + cb > pbLimSrc)
                 goto LFail;
