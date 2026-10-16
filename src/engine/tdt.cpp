@@ -191,6 +191,12 @@ bool TDT::_FInit(PCFL pcfl, CTG ctgTmpl, CNO cnoTmpl)
     if (kboCur != tdtf.bo)
         SwapBytesBom(&tdtf, kbomTdtf);
     Assert(kboCur == tdtf.bo, "bad TDTF");
+    if (!FIn(tdtf.tdts, 0, tdtsLim))
+    {
+        // the shape comes from the file
+        Warn("bad TDT shape");
+        return fFalse;
+    }
     DeserializeTagfToTag(&tdtf.tagTdf, &tdt);
     _tagTdf = tdt;
     _tdts = tdtf.tdts;
@@ -273,6 +279,10 @@ PACTN TDT::_PactnFetch(int32_t tda)
 {
     AssertThis(0);
     AssertIn(tda, 0, tdaLim);
+
+    // the action comes from actor events in a file
+    if (!FIn(tda, 0, tdaLim))
+        return pvNil;
 
     if (tda != _tdaCache)
     {
@@ -756,7 +766,7 @@ int32_t TDT::_CcelOfTda(int32_t tda)
     AssertThis(0);
     AssertIn(tda, 0, tdaLim);
 
-    int32_t ccel;
+    int32_t ccel = 1;
 
     switch (tda)
     {
