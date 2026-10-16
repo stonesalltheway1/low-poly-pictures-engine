@@ -64,9 +64,28 @@ void CloseHelpBalloons(void)
     for (PGOB pgobBalloon : rgpgob)
         pgobBalloon->Release();
 }
+
+// Export: stop playback, close help balloons and go to the first frame of the first scene (from the app's loop)
+bool g_fRewindWant = false, g_fRewindPoll = false;
+void PollRewind(void *)
+{
+    if (!g_fRewindWant)
+        return;
+    g_fRewindWant = false;
+    PMVIE pmvie = PmvieCur();
+    if (pmvie == pvNil || pmvie->Cscen() == 0)
+        return;
+    if (pmvie->FPlaying())
+        pmvie->Play(); // stops it
+    CloseHelpBalloons();
+    if (pmvie->FSwitchScen(0) && pmvie->Pscen() != pvNil)
+        pmvie->Pscen()->FGotoFrm(pmvie->Pscen()->NfrmFirst());
+    pmvie->InvalViews();
+}
 } // namespace
 
-// Stop any playback, close help balloons and go to the first frame of the first scene. Returns JSON:
+// Get the open movie ready for export: the app's loop stops any playback, closes help balloons and goes to the first
+// frame of the first scene (PollRewind) before it next handles a command. Returns JSON:
 // {"ok":true,"title":...,"scenes":N,"view":[left,top,right,bottom]} (view in canvas pixels), or {"ok":false,...}
 extern "C" EMSCRIPTEN_KEEPALIVE const char *lpp_export_prepare(void)
 {
@@ -80,12 +99,14 @@ extern "C" EMSCRIPTEN_KEEPALIVE const char *lpp_export_prepare(void)
         s_json = "{\"ok\":false,\"error\":\"no movie\"}";
         return s_json.c_str();
     }
-    if (pmvie->FPlaying())
-        pmvie->Play(); // stops it
-    CloseHelpBalloons();
-    if (pmvie->FSwitchScen(0) && pmvie->Pscen() != pvNil)
-        pmvie->Pscen()->FGotoFrm(pmvie->Pscen()->NfrmFirst());
-    pmvie->InvalViews();
+    // Stopping and rewinding can load content, which may suspend the app (Asyncify): never inside a call from the
+    // page. The app's own loop does it (PollRewind), well before the page calls lpp_export_play.
+    g_fRewindWant = true;
+    if (!g_fRewindPoll)
+    {
+        AddPollProc(PollRewind, pvNil);
+        g_fRewindPoll = true;
+    }
 
     RC rc;
     STN stnTitle;
