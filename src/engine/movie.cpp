@@ -467,6 +467,13 @@ PGST DeserializeRollCall(int16_t bo, PGST pgst)
     PGST _pgst;
     STN stn;
 
+    // GetExtra copies the extra data into an MACTRF
+    if (pgst->CbExtra() != SIZEOF(MACTRF))
+    {
+        Warn("Bad roll call");
+        return pvNil;
+    }
+
     /* We need to return a new GST since cbExtra is different */
     _pgst = GST::PgstNew(SIZEOF(MACTR));
     if (_pgst == pvNil)
@@ -5645,8 +5652,11 @@ void MVIE::DoTrans(PGNV pgnvDst, PGNV pgnvSrc, RC *prcDst, RC *prcSrc)
     }
     if (pvNil != pglclrSystem && pvNil != pglclrBkgd)
     {
-        Assert(pglclrBkgd->IvMac() + iclrMin <= pglclrSystem->IvMac(), "Background palette too large");
-        CopyPb(pglclrBkgd->QvGet(0), pglclrSystem->QvGet(iclrMin), LwMul(SIZEOF(CLR), pglclrBkgd->IvMac()));
+        // the background's palette (and where it goes) come from a file
+        if (FIn(iclrMin, 0, pglclrSystem->IvMac() + 1) && pglclrBkgd->IvMac() <= pglclrSystem->IvMac() - iclrMin)
+            CopyPb(pglclrBkgd->QvGet(0), pglclrSystem->QvGet(iclrMin), LwMul(SIZEOF(CLR), pglclrBkgd->IvMac()));
+        else
+            Warn("Background palette too large");
     }
 
     switch (_trans)

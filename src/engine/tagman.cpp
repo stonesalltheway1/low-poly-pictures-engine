@@ -212,11 +212,17 @@ bool TAGM::FMergeGstSource(PGST pgst, int16_t bo, int16_t osk)
 {
     AssertThis(0);
     AssertPo(pgst, 0);
-    Assert(SIZEOF(int32_t) == pgst->CbExtra(), "bad pgstSource");
 
     int32_t istn;
     STN stn;
     int32_t sid;
+
+    // the table comes from a file: GetExtra copies the extra data into sid
+    if (SIZEOF(int32_t) != pgst->CbExtra())
+    {
+        Warn("bad pgstSource");
+        return fFalse;
+    }
 
     for (istn = 0; istn < pgst->IvMac(); istn++)
     {

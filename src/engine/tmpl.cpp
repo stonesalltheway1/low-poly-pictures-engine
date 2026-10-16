@@ -170,6 +170,8 @@ bool ACTN::_FInit(PCFL pcfl, CTG ctg, CNO cno)
     _pggcel = GG::PggRead(&blck, &bo);
     if (pvNil == _pggcel)
         return fFalse;
+    if (_pggcel->CbFixed() != SIZEOF(CEL))
+        return fFalse; // GetCel copies the fixed part into a CEL
     AssertBomRglw(kbomCel, SIZEOF(CEL));
     AssertBomRgsw(kbomCps, SIZEOF(CPS));
     if (kboOther == bo)
@@ -189,6 +191,8 @@ bool ACTN::_FInit(PCFL pcfl, CTG ctg, CNO cno)
     _pglbmat34 = GL::PglRead(&blck, &bo);
     if (pvNil == _pglbmat34)
         return fFalse;
+    if (_pglbmat34->CbEntry() != SIZEOF(BMAT34))
+        return fFalse; // GetMatrix copies entries into a BMAT34
     AssertBomRglw(kbomBmat34, SIZEOF(BMAT34));
     if (kboOther == bo)
     {
@@ -203,10 +207,13 @@ bool ACTN::_FInit(PCFL pcfl, CTG ctg, CNO cno)
         _pgltagSnd = GL::PglRead(&blck, &bo);
         if (pvNil == _pgltagSnd)
             return fFalse;
-        AssertBomRglw(kbomTag, SIZEOF(TAG));
+        // the entries are TAGs as saved (TAGF), GetSnd copies one into a TAG
+        if (_pgltagSnd->CbEntry() != SIZEOF(TAGF))
+            return fFalse;
+        AssertBomRglw(kbomTag, SIZEOF(TAGF));
         if (kboOther == bo)
         {
-            SwapBytesRglw(_pgltagSnd->QvGet(0), LwMul(_pgltagSnd->IvMac(), SIZEOF(TAG) / SIZEOF(int32_t)));
+            SwapBytesRglw(_pgltagSnd->QvGet(0), LwMul(_pgltagSnd->IvMac(), SIZEOF(TAGF) / SIZEOF(int32_t)));
         }
     }
 
@@ -265,7 +272,7 @@ void ACTN::GetSnd(int32_t icel, PTAG ptag)
     if (pvNil != _pgltagSnd)
     {
         GetCel(icel, &cel);
-        if (cel.chidSnd >= 0) // negative means no sound
+        if (cel.chidSnd >= 0 && cel.chidSnd < _pgltagSnd->IvMac()) // negative means no sound
             _pgltagSnd->Get(cel.chidSnd, ptag);
     }
 }
@@ -423,6 +430,7 @@ bool TMPL::_FInit(PCFL pcfl, CTG ctg, CNO cno)
     BLCK blck;
     int32_t ibact;
     int16_t ibset;
+    int32_t ibsetT;
 
     if (!_FReadTmplf(pcfl, ctg, cno))
         return fFalse;
@@ -435,7 +443,11 @@ bool TMPL::_FInit(PCFL pcfl, CTG ctg, CNO cno)
     _pglibactPar = GL::PglRead(&blck, &bo);
     if (pvNil == _pglibactPar)
         return fFalse;
-    Assert(_pglibactPar->CbEntry() == SIZEOF(int16_t), "Bad _pglibactPar!");
+    if (_pglibactPar->CbEntry() != SIZEOF(int16_t))
+    {
+        Warn("Bad _pglibactPar!");
+        return fFalse;
+    }
     if (kboOther == bo)
         SwapBytesRgsw(_pglibactPar->QvGet(0), _pglibactPar->IvMac());
 
@@ -447,7 +459,11 @@ bool TMPL::_FInit(PCFL pcfl, CTG ctg, CNO cno)
     _pglibset = GL::PglRead(&blck, &bo);
     if (pvNil == _pglibset)
         return fFalse;
-    Assert(_pglibset->CbEntry() == SIZEOF(int16_t), "Bad TMPL _pglibset!");
+    if (_pglibset->CbEntry() != SIZEOF(int16_t) || _pglibset->IvMac() != _pglibactPar->IvMac())
+    {
+        Warn("Bad TMPL _pglibset!");
+        return fFalse;
+    }
     if (kboOther == bo)
         SwapBytesRgsw(_pglibset->QvGet(0), _pglibset->IvMac());
 
@@ -489,15 +505,28 @@ bool TMPL::_FInit(PCFL pcfl, CTG ctg, CNO cno)
     _pggcmid = GG::PggRead(&blck, &bo);
     if (pvNil == _pggcmid)
         return fFalse;
-    Assert(_pggcmid->CbFixed() == SIZEOF(int32_t), "Bad TMPL _pggcmid");
-    Assert(_pggcmid->IvMac() == _cbset, "Bad TMPL _pggcmid");
-    if (kboOther == bo)
+    if (_pggcmid->CbFixed() != SIZEOF(int32_t) || _pggcmid->IvMac() != _cbset)
     {
-        for (ibset = 0; ibset < _cbset; ibset++)
+        Warn("Bad TMPL _pggcmid");
+        return fFalse;
+    }
+    for (ibsetT = 0; ibsetT < _cbset; ibsetT++)
+    {
+        int32_t cbVar;
+        int32_t ccmid;
+
+        if (kboOther == bo)
+            SwapBytesRglw(_pggcmid->QvFixedGet(ibsetT), 1);
+        // each entry (one per body part set) is a count of cmids followed by
+        // that many cmids
+        ccmid = *(int32_t *)_pggcmid->QvFixedGet(ibsetT, &cbVar);
+        if (!FIn(ccmid, 0, cbVar / SIZEOF(int32_t) + 1))
         {
-            SwapBytesRglw(_pggcmid->QvFixedGet(ibset), 1);
-            SwapBytesRglw(_pggcmid->QvGet(ibset), *(int32_t *)_pggcmid->QvFixedGet(ibset));
+            Warn("Bad TMPL _pggcmid");
+            return fFalse;
         }
+        if (kboOther == bo)
+            SwapBytesRglw(_pggcmid->QvGet(ibsetT), ccmid);
     }
     return fTrue;
 // REVIEW *****: temp code until Pete converts our TMPL content
@@ -537,6 +566,12 @@ LBuildGgcm:
             }
             if (pcmtl->Ibset() == ibset)
             {
+                if (ccmid >= CvFromRgv(rgcmid))
+                {
+                    ReleasePpo(&pcmtl);
+                    ReleasePpo(&pcrf);
+                    return fFalse;
+                }
                 rgcmid[ccmid++] = kid.chid;
             }
             ReleasePpo(&pcmtl);

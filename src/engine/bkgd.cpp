@@ -222,6 +222,9 @@ bool BKGD::_FInit(PCFL pcfl, CTG ctg, CNO cno)
         _pglclr = GL::PglRead(&blck, &bo);
         if (_pglclr != pvNil)
         {
+            // the palette is copied as CLRs into the system palette
+            if (_pglclr->CbEntry() != SIZEOF(CLR))
+                goto LFail;
             if (kboOther == bo)
                 SwapBytesRglw(_pglclr->QvGet(0), _pglclr->IvMac());
         }
@@ -238,7 +241,11 @@ bool BKGD::_FInit(PCFL pcfl, CTG ctg, CNO cno)
     pgllite = GL::PglRead(&blck, &bo);
     if (pvNil == pgllite)
         goto LFail;
-    Assert(pgllite->CbEntry() == SIZEOF(LITE), "bad pgllite...you may need to update bkgds.chk");
+    if (pgllite->CbEntry() != SIZEOF(LITE))
+    {
+        Warn("bad pgllite...you may need to update bkgds.chk");
+        goto LFail;
+    }
     AssertBomRglw(kbomLite, SIZEOF(LITE));
     if (kboOther == bo)
     {
